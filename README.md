@@ -5,7 +5,7 @@ SiMonitoringGalangan mencatat progres fisik pembangunan kapal per periode lapora
 ```mermaid
 flowchart LR
     A["Masuk"] --> B["Pilih atau buat proyek"]
-    B --> C["Susun WBS dan tetapkan baseline"]
+    B --> C["Susun struktur pekerjaan dan tetapkan baseline"]
     C --> D["Buat periode laporan"]
     D --> E["Isi progres per tahap"]
     E --> F["Tinjau ringkasan"]
@@ -15,11 +15,11 @@ flowchart LR
 ## Alur UI
 
 1. **Masuk dan pilih proyek.** Setelah login dan verifikasi email, buka dashboard. Pilih proyek dari daftar **Proyek kapal** di bagian atas. Jika belum ada proyek, dashboard menampilkan formulir pembuatan proyek.
-2. **Buat proyek.** Klik **+ Buat proyek**. Isi kode pembangunan, nama kapal, galangan, serta tanggal mulai dan selesai. Pilih WBS kosong atau salin struktur dari proyek sendiri. Setelah disimpan, aplikasi membuka **Form Builder**.
-3. **Susun WBS di Form Builder.** WBS (*Work Breakdown Structure*) membagi pekerjaan menjadi kelompok dan item. Setiap kelompok punya tahapan pengukuran yang dipakai oleh item di dalamnya. Klik **Simpan draft** untuk melanjutkan penyusunan nanti. Klik **Tetapkan baseline** untuk membuat revisi yang bisa dipakai dalam laporan. Total bobot semua item proyek harus 100%, dan total bobot tahap di setiap kelompok juga harus 100%.
+2. **Buat proyek.** Klik **+ Buat proyek**. Isi kode pembangunan, nama kapal, galangan, serta tanggal mulai dan selesai. Pilih **Mulai dari struktur kosong** atau salin struktur dari proyek sendiri. Setelah disimpan, aplikasi membuka **Form Builder**.
+3. **Susun struktur pekerjaan di Form Builder.** Bagi pekerjaan menjadi kelompok dan item. Setiap kelompok punya tahapan pengukuran yang dipakai oleh item di dalamnya. Klik **Simpan draft** untuk melanjutkan penyusunan nanti. Klik **Tetapkan baseline** untuk membuat revisi yang bisa dipakai dalam laporan. Total bobot semua item proyek harus 100%, dan total bobot tahap di setiap kelompok juga harus 100%.
 4. **Buat periode di Input Progres.** Isi tanggal mulai dan akhir, serta target kumulatif jika tersedia. Proyek harus sudah memiliki baseline, dan tanggal periode baru tidak boleh bertumpang tindih dengan periode lain di proyek yang sama.
 5. **Isi realisasi.** Pada periode terbuka, pilih kelompok dan item, isi realisasi setiap tahap dari 0 sampai 100%, lalu klik **Simpan progres**. Kolom kosong berarti tahap belum diukur. Angka 0% berarti tahap sudah dicatat dengan realisasi nol.
-6. **Tinjau dan tutup periode.** Buka **Ringkasan** untuk melihat realisasi fisik, target, deviasi, dan riwayat periode. Buka **Struktur WBS** untuk melihat detail pekerjaan. Saat laporan selesai, kembali ke **Input Progres** dan pilih **Tutup periode**. Realisasi dan target periode itu akan terkunci.
+6. **Tinjau dan tutup periode.** Buka **Ringkasan** untuk melihat realisasi fisik, target, deviasi, dan riwayat periode. Buka **Struktur Pekerjaan dan Pengukuran Progres** untuk melihat detail pekerjaan. Saat laporan selesai, kembali ke **Input Progres** dan pilih **Tutup periode**. Realisasi dan target periode itu akan terkunci.
 
 ## Alur backend
 

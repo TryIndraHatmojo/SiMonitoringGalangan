@@ -8,7 +8,7 @@ export default function GalanganBrand() {
                 ◈
             </span>
             <span>
-                Galangan<span className="brand-accent">Monitor</span>
+                Monitoring<span className="brand-accent">Galangan</span>
             </span>
         </Link>
     );

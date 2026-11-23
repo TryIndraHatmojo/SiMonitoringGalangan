@@ -15,7 +15,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        config(['inertia.devtools.enabled' => false]);
     }
 
     /**

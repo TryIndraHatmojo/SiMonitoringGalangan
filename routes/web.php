@@ -1,9 +1,13 @@
 <?php
 
 use App\Http\Controllers\MonitoringController;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::inertia('/', 'welcome')->name('home');
+Route::get('/', fn (Request $request): RedirectResponse => redirect()->route(
+    $request->user() ? 'dashboard' : 'login',
+))->name('home');
 Route::middleware(['auth', 'verified'])->controller(MonitoringController::class)->group(function () {
     Route::get('dashboard', 'index')->name('dashboard');
     Route::get('monitoring/{section}', 'index')->whereIn('section', ['ringkasan', 'wbs', 'builder', 'input', 'baru'])->name('workspace');

@@ -49,6 +49,11 @@ export function AppSidebar() {
                         <SidebarMenuItem key={id}>
                             <SidebarMenuButton
                                 asChild
+                                className={
+                                    id === 'wbs'
+                                        ? 'h-auto min-h-8 py-1.5'
+                                        : undefined
+                                }
                                 isActive={id === section}
                                 tooltip={sections[id]}
                             >

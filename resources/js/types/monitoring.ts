@@ -52,7 +52,7 @@ export type Monitoring = {
 };
 export const sections = {
     ringkasan: 'Ringkasan',
-    wbs: 'Struktur WBS',
+    wbs: 'Struktur Pekerjaan dan Pengukuran Progres',
     builder: 'Form Builder',
     input: 'Input Progres',
     baru: 'Buat proyek',

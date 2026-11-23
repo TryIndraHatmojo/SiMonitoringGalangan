@@ -81,10 +81,10 @@ function ProjectForm({ projects }: Pick<Monitoring, 'projects'>) {
                 <label>
                     Struktur awal
                     <select name="source">
-                        <option value="">Mulai dengan WBS kosong</option>
+                        <option value="">Mulai dari struktur kosong</option>
                         {projects.map((p) => (
                             <option key={p.id} value={p.id}>
-                                Salin WBS: {p.name}
+                                Salin struktur dari {p.name}
                             </option>
                         ))}
                     </select>
@@ -494,7 +494,7 @@ export default function Dashboard(props: Monitoring) {
                                                 query: { project: project.id },
                                             })}
                                         >
-                                            Susun WBS pertama
+                                            Susun struktur pekerjaan
                                         </Link>
                                     )}
                                 </section>

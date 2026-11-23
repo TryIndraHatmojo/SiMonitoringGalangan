@@ -2,7 +2,6 @@ import { Form, Head, Link } from "@inertiajs/react";
 import { useState } from "react";
 import GalanganBrand from "@/components/galangan-brand";
 import InputError from "@/components/input-error";
-import { home, register } from "@/routes";
 import { store } from "@/routes/login";
 import { request } from "@/routes/password";
 import "../../../css/galangan-public.css";
@@ -18,9 +17,6 @@ export default function Login({ status, canResetPassword }: Props) {
                 <section className="login-main" aria-labelledby="login-title">
                     <GalanganBrand />
                     <div className="login-card">
-                        <Link className="back-link" href={home()}>
-                            Kembali ke ringkasan
-                        </Link>
                         <h1 id="login-title">Login</h1>
                         {status && (
                             <p
@@ -93,12 +89,6 @@ export default function Login({ status, canResetPassword }: Props) {
                                 </>
                             )}
                         </Form>
-                        <div className="demo-box">
-                            <strong>Belum punya akun?</strong>
-                            <Link className="back-link" href={register()}>
-                                Daftar
-                            </Link>
-                        </div>
                     </div>
                     <p className="login-footer"></p>
                 </section>
@@ -108,7 +98,7 @@ export default function Login({ status, canResetPassword }: Props) {
                 >
                     <div>
                         <span className="eyebrow">
-                            <i /> RUANG KERJA GALANGAN
+                            <i /> Monitoring Pembangunan Kapal
                         </span>
                         <p>Setiap tahap pembangunan, tercatat.</p>
                     </div>
