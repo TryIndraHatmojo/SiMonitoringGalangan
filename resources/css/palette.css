@@ -1,0 +1,78 @@
+/* Edit these tokens to change the shadcn and monitoring palette. */
+:root {
+    color-scheme: light;
+
+    --background: #f3f7f8;
+    --foreground: #142b36;
+    --card: #fff;
+    --card-foreground: var(--foreground);
+    --popover: var(--card);
+    --popover-foreground: var(--foreground);
+    --primary: #087e69;
+    --primary-foreground: #fff;
+    --secondary: #e7eff5;
+    --secondary-foreground: #245571;
+    --muted: #edf3f5;
+    --muted-foreground: #516675;
+    --accent: #e0f4ee;
+    --accent-foreground: #075b53;
+    --destructive: #b42318;
+    --destructive-foreground: #9f251b;
+    --border: #dbe5e8;
+    --input: #b8c9ce;
+    --ring: #088678;
+
+    --sidebar: #102e43;
+    --sidebar-foreground: #d1e0e7;
+    --sidebar-primary: #65dfc3;
+    --sidebar-primary-foreground: #123849;
+    --sidebar-accent: #25485a;
+    --sidebar-accent-foreground: #91f3db;
+    --sidebar-border: #395363;
+    --sidebar-ring: var(--sidebar-primary);
+
+    --chart-1: var(--primary);
+    --chart-2: #657f96;
+    --chart-3: #8c510e;
+    --chart-4: #245571;
+    --chart-5: #a44820;
+
+    --progress-surface: #12354b;
+    --progress-foreground: #fff;
+    --progress-grid: #486577;
+    --progress-actual: #6ce3c3;
+    --progress-plan: #f8bf73;
+}
+
+.dark {
+    color-scheme: dark;
+
+    --background: #0e202b;
+    --foreground: #edf6f8;
+    --card: #132a38;
+    --card-foreground: var(--foreground);
+    --popover: var(--card);
+    --popover-foreground: var(--foreground);
+    --primary: #65dfc3;
+    --primary-foreground: #103c36;
+    --secondary: #203d4d;
+    --secondary-foreground: #d1e0e7;
+    --muted: #1a3341;
+    --muted-foreground: #a6bdc8;
+    --accent: #1c4742;
+    --accent-foreground: #91f3db;
+    --destructive: #a9362f;
+    --destructive-foreground: #ffb4a8;
+    --border: #2c4656;
+    --input: #496777;
+    --ring: var(--primary);
+
+    --sidebar: #0b2331;
+    --sidebar-accent: #1d4051;
+
+    --chart-1: var(--primary);
+    --chart-2: #a6bdc8;
+    --chart-3: #f8bf73;
+    --chart-4: #80b5d1;
+    --chart-5: #ffad87;
+}
