@@ -1,11 +1,11 @@
-import { Form, Head, Link } from '@inertiajs/react';
-import { useState } from 'react';
-import GalanganBrand from '@/components/galangan-brand';
-import InputError from '@/components/input-error';
-import { home, register } from '@/routes';
-import { store } from '@/routes/login';
-import { request } from '@/routes/password';
-import '../../../css/galangan-public.css';
+import { Form, Head, Link } from "@inertiajs/react";
+import { useState } from "react";
+import GalanganBrand from "@/components/galangan-brand";
+import InputError from "@/components/input-error";
+import { home, register } from "@/routes";
+import { store } from "@/routes/login";
+import { request } from "@/routes/password";
+import "../../../css/galangan-public.css";
 
 type Props = { status?: string; canResetPassword: boolean };
 
@@ -21,11 +21,7 @@ export default function Login({ status, canResetPassword }: Props) {
                         <Link className="back-link" href={home()}>
                             Kembali ke ringkasan
                         </Link>
-                        <h1 id="login-title">Masuk ke akun</h1>
-                        <p>
-                            Gunakan akun Anda untuk masuk ke ruang kerja
-                            galangan.
-                        </p>
+                        <h1 id="login-title">Login</h1>
                         {status && (
                             <p
                                 role="status"
@@ -35,7 +31,7 @@ export default function Login({ status, canResetPassword }: Props) {
                                 {status}
                             </p>
                         )}
-                        <Form {...store.form()} resetOnSuccess={['password']}>
+                        <Form {...store.form()} resetOnSuccess={["password"]}>
                             {({ processing, errors }) => (
                                 <>
                                     <label htmlFor="email">Email</label>
@@ -51,7 +47,7 @@ export default function Login({ status, canResetPassword }: Props) {
                                     <label htmlFor="password">Kata sandi</label>
                                     <div className="password-wrap">
                                         <input
-                                            type={visible ? 'text' : 'password'}
+                                            type={visible ? "text" : "password"}
                                             name="password"
                                             id="password"
                                             placeholder="Masukkan kata sandi"
@@ -64,7 +60,7 @@ export default function Login({ status, canResetPassword }: Props) {
                                             aria-pressed={visible}
                                             onClick={() => setVisible(!visible)}
                                         >
-                                            {visible ? 'Tutup' : 'Lihat'}
+                                            {visible ? "Tutup" : "Lihat"}
                                         </button>
                                     </div>
                                     <InputError message={errors.password} />
@@ -74,7 +70,7 @@ export default function Login({ status, canResetPassword }: Props) {
                                                 type="checkbox"
                                                 name="remember"
                                                 value="1"
-                                            />{' '}
+                                            />{" "}
                                             Ingat saya
                                         </label>
                                         {canResetPassword && (
@@ -92,7 +88,7 @@ export default function Login({ status, canResetPassword }: Props) {
                                         data-test="login-button"
                                         disabled={processing}
                                     >
-                                        {processing ? 'Memproses…' : 'Masuk'}
+                                        {processing ? "Memproses…" : "Masuk"}
                                     </button>
                                 </>
                             )}
@@ -104,7 +100,7 @@ export default function Login({ status, canResetPassword }: Props) {
                             </Link>
                         </div>
                     </div>
-                    <p className="login-footer">Galangan Monitor</p>
+                    <p className="login-footer"></p>
                 </section>
                 <aside
                     className="login-photo"

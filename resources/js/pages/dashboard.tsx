@@ -45,7 +45,7 @@ function ProjectForm({ projects }: Pick<Monitoring, 'projects'>) {
                         <option value="">WBS kosong</option>
                         {projects.map((p) => (
                             <option key={p.id} value={p.id}>
-                                Salin WBS Â· {p.name}
+                                Salin WBS: {p.name}
                             </option>
                         ))}
                     </select>
@@ -245,7 +245,7 @@ export default function Dashboard(props: Monitoring) {
                     </h1>
                     {!create && (
                         <p>
-                            {project.name} Â· {project.code} Â· {project.yard}
+                            Nama Project: {project.name} <br></br>Kode: {project.code} <br></br>Galangan: {project.yard}
                         </p>
                     )}
                     {project?.is_demo && !create && (
@@ -261,7 +261,7 @@ export default function Dashboard(props: Monitoring) {
                     >
                         {Object.entries(errors).map(([k, v]) => (
                             <div key={k}>
-                                {k} Â· {String(v)}
+                                {k}: {String(v)}
                             </div>
                         ))}
                     </div>
@@ -296,16 +296,16 @@ export default function Dashboard(props: Monitoring) {
                                     >
                                         {history.map((p) => (
                                             <option key={p.id} value={p.id}>
-                                                {p.start} â€” {p.end}
+                                                {p.start} s.d. {p.end}
                                             </option>
                                         ))}
                                     </select>
                                 </label>
                                 <p>
-                                    Revisi {period?.revision} Â·{' '}
-                                    {period?.closed_at ? 'Ditutup' : 'Terbuka'}{' '}
-                                    Â· {report.measured}/{report.expected} tahap
-                                    diukur{period?.partial ? ' Â· Parsial' : ''}
+                                    Revisi {period?.revision} :{' '}
+                                    {period?.closed_at ? 'Ditutup' : 'Terbuka'},{' '}
+                                    {report.measured}/{report.expected} tahap
+                                    diukur{period?.partial ? ', Parsial' : ''}
                                 </p>
                                 {period?.is_simulated && (
                                     <p>Realisasi tahap simulasi</p>
