@@ -33,7 +33,7 @@ export default function TwoFactorChallenge() {
         return {
             title: 'Authentication code',
             description:
-                'Enter the authentication code provided by your authenticator application.',
+                'Enter the 6-digit code from your authenticator app.',
             toggleText: 'login using a recovery code',
         };
     }, [showRecoveryInput]);
@@ -81,6 +81,8 @@ export default function TwoFactorChallenge() {
                                         <InputOTP
                                             name="code"
                                             maxLength={OTP_MAX_LENGTH}
+                                            placeholder={'·'.repeat(OTP_MAX_LENGTH)}
+                                            aria-label="6-digit authentication code"
                                             value={code}
                                             onChange={(value) => setCode(value)}
                                             disabled={processing}

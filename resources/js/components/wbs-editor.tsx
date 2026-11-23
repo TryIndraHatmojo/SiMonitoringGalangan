@@ -52,7 +52,7 @@ export function WbsEditor({
         rows.reduce((n, row) => n + Number(row.weight), 0);
     return (
         <>
-            <div className="grid items-start gap-4 md:grid-cols-[15rem_1fr]">
+            <div className="grid items-start gap-4 lg:grid-cols-[15rem_1fr]">
                 <section>
                     <h2>Kelompok kerja</h2>
                     {groups.map((g, i) => (
@@ -96,6 +96,7 @@ export function WbsEditor({
                             Nama kelompok
                             <Input
                                 value={group.name ?? ''}
+                                placeholder="Mis. Design & Approval Drawing"
                                 onChange={(e) =>
                                     change({ name: e.target.value })
                                 }
@@ -135,12 +136,17 @@ export function WbsEditor({
                                     return (
                                         <div
                                             key={row.id}
-                                            className="my-2 grid grid-cols-[1fr_6rem_auto] items-end gap-2"
+                                            className="my-2 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 lg:grid-cols-[minmax(0,1fr)_6rem_auto]"
                                         >
-                                            <label>
+                                            <label className="col-span-2 lg:col-span-1">
                                                 Nama
                                                 <Input
                                                     value={row.name ?? ''}
+                                                    placeholder={
+                                                        key === 'items'
+                                                            ? 'Mis. Basic Design'
+                                                            : 'Mis. Owner Approval'
+                                                    }
                                                     onChange={(e) =>
                                                         edit({
                                                             name: e.target
@@ -157,6 +163,11 @@ export function WbsEditor({
                                                     max="100"
                                                     step="any"
                                                     value={row.weight ?? ''}
+                                                    placeholder={
+                                                        key === 'items'
+                                                            ? '0.5831'
+                                                            : '30'
+                                                    }
                                                     onChange={(e) =>
                                                         edit({
                                                             weight: e.target

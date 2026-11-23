@@ -1,5 +1,5 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { History } from '@/components/progress-history';
@@ -14,35 +14,74 @@ import {
     type Period,
 } from '@/types/monitoring';
 
+const targetPlaceholder = '98.5';
+
+function DateField({
+    name,
+    label,
+    example,
+}: {
+    name: 'start' | 'end';
+    label: string;
+    example: string;
+}) {
+    const hintId = useId();
+
+    return (
+        <div className="grid gap-1">
+            <label>
+                {label}
+                <Input
+                    name={name}
+                    required
+                    type="date"
+                    aria-describedby={hintId}
+                />
+            </label>
+            <span id={hintId} className="text-xs text-muted-foreground">
+                Mis. {example}
+            </span>
+        </div>
+    );
+}
+
 function ProjectForm({ projects }: Pick<Monitoring, 'projects'>) {
     return (
         <section>
             <h2>Identitas proyek kapal</h2>
-            <Form {...store.form()} className="grid gap-4 sm:grid-cols-2">
+            <Form
+                {...store.form()}
+                className="grid items-start gap-4 sm:grid-cols-2"
+            >
                 {[
-                    ['code', 'Kode pembangunan'],
-                    ['name', 'Nama kapal'],
-                    ['yard', 'Galangan'],
-                    ['start', 'Mulai pembangunan'],
-                    ['end', 'Selesai pembangunan'],
-                ].map(([name, label]) => (
+                    ['code', 'Kode pembangunan', 'Mis. ASD-TUG-002'],
+                    ['name', 'Nama kapal', 'Mis. ASD Harbour Tug 2 x 1800 HP'],
+                    ['yard', 'Galangan', 'Masukkan nama galangan'],
+                ].map(([name, label, placeholder]) => (
                     <label key={name}>
                         {label}
                         <Input
                             name={name}
                             required
-                            type={
-                                ['start', 'end'].includes(name)
-                                    ? 'date'
-                                    : 'text'
-                            }
+                            type="text"
+                            placeholder={placeholder}
                         />
                     </label>
                 ))}
+                <DateField
+                    name="start"
+                    label="Mulai pembangunan"
+                    example="1 Juli 2020"
+                />
+                <DateField
+                    name="end"
+                    label="Selesai pembangunan"
+                    example="20 Oktober 2020"
+                />
                 <label>
                     Struktur awal
                     <select name="source">
-                        <option value="">WBS kosong</option>
+                        <option value="">Mulai dengan WBS kosong</option>
                         {projects.map((p) => (
                             <option key={p.id} value={p.id}>
                                 Salin WBS: {p.name}
@@ -66,6 +105,7 @@ function WorkDetail({
     period: Period | null;
     editing: boolean;
 }) {
+    const realizationHintId = useId();
     const [gid, setGroup] = useState(
         new URLSearchParams(
             typeof window === 'undefined' ? '' : window.location.search,
@@ -78,6 +118,7 @@ function WorkDetail({
     } | null>(null);
     const group = groups.find((g) => g.id === gid) ?? groups[0];
     const item = group?.items.find((i) => i.id === iid) ?? group?.items[0];
+    const canEdit = editing && period !== null && !period.closed_at;
     if (!group || !item)
         return (
             <section>
@@ -128,6 +169,12 @@ function WorkDetail({
                 <small>{group.name}</small>
                 <h2>{item.name}</h2>
                 <p>Bobot dalam proyek {percent(item.weight)}</p>
+                {canEdit && (
+                    <p id={realizationHintId}>
+                        Isi 0 jika hasil pengukuran nol. Biarkan kosong jika
+                        tahap belum diukur.
+                    </p>
+                )}
                 <form
                     key={item.id}
                     onInput={(event) => {
@@ -180,9 +227,7 @@ function WorkDetail({
                                     <td>{s.name}</td>
                                     <td>{percent(s.weight)}</td>
                                     <td>
-                                        {editing &&
-                                        period &&
-                                        !period.closed_at ? (
+                                        {canEdit ? (
                                             <Input
                                                 className="ml-auto max-w-28"
                                                 type="number"
@@ -190,11 +235,12 @@ function WorkDetail({
                                                 max="100"
                                                 step="0.0001"
                                                 aria-label={s.name}
+                                                aria-describedby={realizationHintId}
                                                 name={s.id}
                                                 defaultValue={
                                                     item.values?.[s.id] ?? ''
                                                 }
-                                                placeholder="Kosong"
+                                                placeholder="95"
                                             />
                                         ) : (
                                             percent(item.values?.[s.id])
@@ -205,9 +251,7 @@ function WorkDetail({
                         </tbody>
                     </table>
                     <div className="mt-4 flex flex-wrap items-center gap-4">
-                        {editing && period && !period.closed_at && (
-                            <Button>Simpan progres</Button>
-                        )}
+                        {canEdit && <Button>Simpan progres</Button>}
                         {preview?.item === item.id ? (
                             <strong aria-live="polite">
                                 Pratinjau progres {percent(preview.progress)}
@@ -324,24 +368,18 @@ export default function Dashboard(props: Monitoring) {
                                     {revision ? (
                                         <Form
                                             {...createPeriod.form(project.id)}
-                                            className="mt-4 flex flex-wrap items-end gap-3"
+                                            className="mt-4 flex flex-wrap items-start gap-3"
                                         >
-                                            <label>
-                                                Mulai
-                                                <Input
-                                                    required
-                                                    type="date"
-                                                    name="start"
-                                                />
-                                            </label>
-                                            <label>
-                                                Sampai
-                                                <Input
-                                                    required
-                                                    type="date"
-                                                    name="end"
-                                                />
-                                            </label>
+                                            <DateField
+                                                name="start"
+                                                label="Mulai"
+                                                example="30 September 2020"
+                                            />
+                                            <DateField
+                                                name="end"
+                                                label="Sampai"
+                                                example="6 Oktober 2020"
+                                            />
                                             <label>
                                                 Target kumulatif (%)
                                                 <Input
@@ -350,9 +388,10 @@ export default function Dashboard(props: Monitoring) {
                                                     min="0"
                                                     max="100"
                                                     name="target"
+                                                    placeholder={targetPlaceholder}
                                                 />
                                             </label>
-                                            <Button>Buat periode</Button>
+                                            <Button className="mt-6.5">Buat periode</Button>
                                         </Form>
                                     ) : (
                                         <p>
@@ -494,6 +533,7 @@ export default function Dashboard(props: Monitoring) {
                                             max="100"
                                             step="0.0001"
                                             defaultValue={period.target ?? ''}
+                                            placeholder={targetPlaceholder}
                                         />
                                     </label>
                                     <Button variant="outline">

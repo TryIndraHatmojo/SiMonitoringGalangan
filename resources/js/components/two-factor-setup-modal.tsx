@@ -178,6 +178,8 @@ function TwoFactorVerificationStep({
                                 id="otp"
                                 name="code"
                                 maxLength={OTP_MAX_LENGTH}
+                                placeholder={'·'.repeat(OTP_MAX_LENGTH)}
+                                aria-label="6-digit authentication code"
                                 onChange={setCode}
                                 disabled={processing}
                                 pattern={REGEXP_ONLY_DIGITS}
