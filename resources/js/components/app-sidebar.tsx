@@ -4,7 +4,7 @@ import {
     Layers,
     ListChecks,
     PanelsTopLeft,
-    Waves,
+    Ship,
 } from 'lucide-react';
 import { NavUser } from '@/components/nav-user';
 import {
@@ -32,9 +32,11 @@ export function AppSidebar() {
             <SidebarHeader>
                 <Link
                     href={dashboard()}
+                    aria-label={name}
                     className="flex items-center gap-3 px-2 py-4 font-bold"
                 >
-                    <Waves
+                    <Ship
+                        aria-hidden="true"
                         className="rounded-md bg-sidebar-primary p-1 text-sidebar-primary-foreground"
                         size={30}
                     />
