@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { History } from '@/components/progress-history';
 import { WbsEditor } from '@/components/wbs-editor';
 import { workspace } from '@/routes';
-import { store, period as createPeriod, update } from '@/routes/projects';
+import { store, period as createPeriod, edit, update } from '@/routes/projects';
 import {
     percent,
     sections,
@@ -288,9 +288,18 @@ export default function Dashboard(props: Monitoring) {
                         {title}
                     </h1>
                     {!create && (
-                        <p>
-                            Nama Project: {project.name} <br></br>Kode: {project.code} <br></br>Galangan: {project.yard}
-                        </p>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <p>
+                                Nama Project: {project.name}
+                                <br />
+                                Kode: {project.code}
+                                <br />
+                                Galangan: {project.yard}
+                            </p>
+                            <Button asChild variant="outline">
+                                <Link href={edit(project.id)}>Edit proyek</Link>
+                            </Button>
+                        </div>
                     )}
                     {project?.is_demo && !create && (
                         <span className="inline-block rounded-full bg-accent px-3 py-1 text-xs font-medium text-accent-foreground">

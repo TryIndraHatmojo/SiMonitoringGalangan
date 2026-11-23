@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Support\ProgressReport;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Unique;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -65,16 +67,59 @@ class MonitoringController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $data = $request->validate([
-            'code' => ['required', 'string', 'max:100', Rule::unique('projects')->where('user_id', $request->user()->id)],
-            'name' => 'required|string|max:255', 'yard' => 'required|string|max:255', 'start' => 'required|date_format:Y-m-d',
-            'end' => 'required|date_format:Y-m-d|after_or_equal:start', 'source' => 'nullable|integer',
-        ]);
+        $data = $request->validate($this->identityRules($request) + ['source' => 'nullable|integer']);
         $draft = empty($data['source']) ? '[]' : $this->owned($request)->where('id', $data['source'])->firstOrFail()->draft;
         unset($data['source']);
         $id = DB::table('projects')->insertGetId($data + ['user_id' => $request->user()->id, 'draft' => $draft]);
 
         return to_route('workspace', ['section' => 'builder', 'project' => $id]);
+    }
+
+    public function edit(Request $request, int $project): Response
+    {
+        return Inertia::render('projects/edit', [
+            'project' => $this->owned($request)->where('id', $project)->firstOrFail(['id', 'code', 'name', 'yard', 'start', 'end']),
+            'projects' => $this->owned($request)->orderBy('name')->get(['id', 'name']),
+            'section' => 'ringkasan',
+        ]);
+    }
+
+    public function updateIdentity(Request $request, int $project): RedirectResponse
+    {
+        $ownedProject = $this->owned($request)->where('id', $project);
+        $ownedProject->firstOrFail(['id']);
+
+        $duplicateCode = 'Kode pembangunan sudah digunakan pada proyek lain.';
+        $data = $request->validate($this->identityRules($request, $project), [
+            'code.unique' => $duplicateCode,
+        ]);
+
+        try {
+            $ownedProject->update($data);
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages(['code' => $duplicateCode]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Perubahan proyek disimpan.']);
+
+        return to_route('workspace', ['section' => 'ringkasan', 'project' => $project]);
+    }
+
+    /** @return array<string, list<string|Unique>> */
+    private function identityRules(Request $request, ?int $project = null): array
+    {
+        $uniqueCode = Rule::unique('projects')->where('user_id', $request->user()->id);
+        if ($project !== null) {
+            $uniqueCode->ignore($project);
+        }
+
+        return [
+            'code' => ['required', 'string', 'max:100', $uniqueCode],
+            'name' => ['required', 'string', 'max:255'],
+            'yard' => ['required', 'string', 'max:255'],
+            'start' => ['required', 'date_format:Y-m-d'],
+            'end' => ['required', 'date_format:Y-m-d', 'after_or_equal:start'],
+        ];
     }
 
     public function structure(Request $request, int $project): RedirectResponse

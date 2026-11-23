@@ -12,6 +12,8 @@ Route::middleware(['auth', 'verified'])->controller(MonitoringController::class)
     Route::get('dashboard', 'index')->name('dashboard');
     Route::get('monitoring/{section}', 'index')->whereIn('section', ['ringkasan', 'wbs', 'builder', 'input', 'baru'])->name('workspace');
     Route::post('projects', 'store')->name('projects.store');
+    Route::get('projects/{project}/edit', 'edit')->whereNumber('project')->name('projects.edit');
+    Route::patch('projects/{project}', 'updateIdentity')->whereNumber('project')->name('projects.updateIdentity');
     Route::put('projects/{project}/structure', 'structure')->name('projects.structure');
     Route::post('projects/{project}/periods', 'period')->name('projects.period');
     Route::patch('projects/{project}/periods/{period}', 'update')->name('projects.update');

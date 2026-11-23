@@ -25,6 +25,85 @@ class MonitoringTest extends TestCase
         return ['id' => (string) Str::uuid(), 'name' => $name, 'weight' => $weight];
     }
 
+    public function test_owner_can_edit_project_identity_without_changing_monitoring_data(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $project = $this->vessel('Tug');
+        DB::table('projects')->where('id', $project)->update(['is_demo' => true]);
+
+        $item = $this->row('Lambung', 100);
+        $stage = $this->row('Pengecatan', 100);
+        $group = ['id' => (string) Str::uuid(), 'name' => 'Pengecatan', 'items' => [$item], 'stages' => [$stage]];
+        $this->put(route('projects.structure', $project), ['groups' => [$group], 'publish' => true])->assertSessionHasNoErrors();
+        $this->post(route('projects.period', $project), ['start' => '2026-01-01', 'end' => '2026-01-07', 'target' => 20])->assertSessionHasNoErrors();
+        $period = DB::table('report_periods')->value('id');
+        $this->patch(route('projects.update', [$project, $period]), ['item' => $item['id'], 'values' => [$stage['id'] => 15]])->assertSessionHasNoErrors();
+
+        $this->get(route('projects.edit', $project))->assertInertia(fn (Assert $page) => $page
+            ->component('projects/edit')
+            ->where('project.id', $project)
+            ->where('project.code', 'Tug')
+            ->where('project.name', 'Tug')
+            ->where('project.yard', 'Galangan')
+            ->where('project.start', '2026-01-01')
+            ->where('project.end', '2026-12-31'));
+
+        $identity = ['code' => 'Tug-02', 'name' => 'Kapal Tunda', 'yard' => 'Galangan Baru', 'start' => '2026-02-01', 'end' => '2026-02-01'];
+        $summary = route('workspace', ['section' => 'ringkasan', 'project' => $project]);
+        $this->from(route('projects.edit', $project))
+            ->patch(route('projects.updateIdentity', $project), $identity + ['user_id' => User::factory()->create()->id, 'is_demo' => false, 'draft' => '[]'])
+            ->assertRedirect($summary)
+            ->assertSessionHasNoErrors()
+            ->assertInertiaFlash('toast', ['type' => 'success', 'message' => 'Perubahan proyek disimpan.']);
+
+        $this->assertDatabaseHas('projects', $identity + ['id' => $project, 'user_id' => $owner->id, 'is_demo' => true]);
+        $this->get($summary)->assertInertia(fn (Assert $page) => $page
+            ->where('project.name', 'Kapal Tunda')
+            ->where('projects.0.name', 'Kapal Tunda')
+            ->where('draft.0.id', $group['id'])
+            ->where('revision', 1)
+            ->where('period.id', $period)
+            ->where('period.start', '2026-01-01')
+            ->where('period.end', '2026-01-07')
+            ->where('report.actual', 15));
+    }
+
+    public function test_project_identity_validates_dates_and_code_within_the_owner_scope(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $this->vessel('Shared');
+        $this->actingAs(User::factory()->create());
+        $project = $this->vessel('Tug');
+        $this->vessel('Ferry');
+        $edit = route('projects.edit', $project);
+        $update = route('projects.updateIdentity', $project);
+        $identity = ['code' => 'Tug', 'name' => 'Kapal Tunda', 'yard' => 'Galangan', 'start' => '2026-01-01', 'end' => '2026-12-31'];
+
+        $this->from($edit)->patch($update, array_replace($identity, ['code' => 'Ferry', 'end' => '2025-12-31']))
+            ->assertRedirect($edit)
+            ->assertSessionHasErrors(['code', 'end']);
+        $this->assertDatabaseHas('projects', ['id' => $project, 'code' => 'Tug', 'name' => 'Tug', 'end' => '2026-12-31']);
+
+        $this->from($edit)->patch($update, $identity)->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('projects', ['id' => $project, 'code' => 'Tug', 'name' => 'Kapal Tunda']);
+
+        $this->from($edit)->patch($update, array_replace($identity, ['code' => 'Shared']))->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('projects', ['id' => $project, 'code' => 'Shared']);
+    }
+
+    public function test_project_identity_routes_require_ownership(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $project = $this->vessel('Tug');
+        $this->actingAs(User::factory()->create());
+
+        $this->get(route('projects.edit', $project))->assertNotFound();
+        $this->patch(route('projects.updateIdentity', $project), [])->assertNotFound();
+        $this->get(route('projects.edit', $project + 1))->assertNotFound();
+        $this->patch(route('projects.updateIdentity', $project + 1), [])->assertNotFound();
+    }
+
     public function test_project_baselines_measurements_and_history_are_isolated(): void
     {
         $this->actingAs(User::factory()->create());
