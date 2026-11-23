@@ -1,0 +1,381 @@
+[
+  {
+    "sheet": "Design & Approval Drawing",
+    "project_weight": 1.7743017410237352,
+    "stages": [
+      [
+        "Purchase Order/Design",
+        30.0,
+        100
+      ],
+      [
+        "Owner Approval",
+        30.0,
+        95
+      ],
+      [
+        "Class Approval",
+        30.0,
+        95
+      ],
+      [
+        "Doc. Issued",
+        10.0,
+        94.5
+      ]
+    ]
+  },
+  {
+    "sheet": "Work Preparation & General(Jasa",
+    "project_weight": 5.4478948679607315,
+    "stages": [
+      [
+        "Realization",
+        100,
+        47.2
+      ]
+    ]
+  },
+  {
+    "sheet": "Hull Construction",
+    "project_weight": 13.786340354859153,
+    "stages": [
+      [
+        "Purchase Order",
+        10.0,
+        100
+      ],
+      [
+        "Arrival at Yard",
+        20.0,
+        100
+      ],
+      [
+        "Blasting & Shop Primer",
+        5.0,
+        95.375
+      ],
+      [
+        "Marking, Cutting & Bending",
+        5.0,
+        100
+      ],
+      [
+        "Fabrication Fit-up",
+        10.0,
+        100
+      ],
+      [
+        "Fabrication Welding",
+        15.0,
+        100
+      ],
+      [
+        "Erection Fit-up",
+        10.0,
+        100
+      ],
+      [
+        "Erection Welding",
+        15.0,
+        100
+      ],
+      [
+        "Final Inspection",
+        5.0,
+        99.9
+      ],
+      [
+        "Delivery",
+        5.0,
+        0
+      ]
+    ]
+  },
+  {
+    "sheet": "Piping & Valve",
+    "project_weight": 2.118341347624774,
+    "stages": [
+      [
+        "Purchase Order",
+        10.0,
+        100
+      ],
+      [
+        "Arrival at Yard",
+        30.0,
+        100
+      ],
+      [
+        "Marking, Cutting & Fit-up",
+        10.0,
+        100
+      ],
+      [
+        "Weld & Check",
+        10.0,
+        100
+      ],
+      [
+        "Coat / Paint / Galv.",
+        5.0,
+        100
+      ],
+      [
+        "Install on Board",
+        15.0,
+        100
+      ],
+      [
+        "Pipe Support",
+        3.0,
+        98.5
+      ],
+      [
+        "Test",
+        10.0,
+        93
+      ],
+      [
+        "Coating",
+        2.0,
+        3
+      ],
+      [
+        "Delivery",
+        5.0,
+        0
+      ]
+    ]
+  },
+  {
+    "sheet": "Painting & Corrosion Protection",
+    "project_weight": 0.9417454686787581,
+    "stages": [
+      [
+        "Purchase Order",
+        10.0,
+        100
+      ],
+      [
+        "Arrival at Yard",
+        30.0,
+        100
+      ],
+      [
+        "Surface Preparation",
+        25.0,
+        100
+      ],
+      [
+        "Coat / Paint",
+        25.0,
+        83.8
+      ],
+      [
+        "Final Inspection",
+        5.0,
+        62
+      ],
+      [
+        "Delivery",
+        5.0,
+        60
+      ]
+    ]
+  },
+  {
+    "sheet": "Spare Part & Inventory",
+    "project_weight": 0.03965939243668545,
+    "stages": [
+      [
+        "Purchase Order",
+        10.0,
+        98
+      ],
+      [
+        "Arrival at Yard",
+        30.0,
+        100
+      ],
+      [
+        "Loading on Board",
+        45.0,
+        100
+      ],
+      [
+        "Final Inspection",
+        10.0,
+        80
+      ],
+      [
+        "Delivery",
+        5.0,
+        3.83333333333326
+      ]
+    ]
+  },
+  {
+    "sheet": "Machinery Outfitting",
+    "project_weight": 54.2806150828744,
+    "stages": [
+      [
+        "Purchase Order",
+        30.0,
+        100
+      ],
+      [
+        "Arrival at Yard",
+        30.0,
+        100
+      ],
+      [
+        "Fit-up",
+        5.0,
+        97
+      ],
+      [
+        "Welding & Check",
+        4.5,
+        97
+      ],
+      [
+        "Painting",
+        0.5,
+        97
+      ],
+      [
+        "Fit-up on Board",
+        5.0,
+        81.32
+      ],
+      [
+        "Install",
+        5.0,
+        71.1
+      ],
+      [
+        "Fitting & Alignment",
+        5.0,
+        28.8977272727274
+      ],
+      [
+        "System Connection",
+        5.0,
+        0
+      ],
+      [
+        "Testing",
+        5.0,
+        0
+      ],
+      [
+        "Delivery",
+        5.0,
+        0
+      ]
+    ]
+  },
+  {
+    "sheet": "Electric Outfitting",
+    "project_weight": 10.478208697493326,
+    "stages": [
+      [
+        "Purchase Order",
+        10.0,
+        99.9999999999998
+      ],
+      [
+        "Arrival at Yard",
+        30.0,
+        85.6199999999999
+      ],
+      [
+        "Fit-up",
+        4.0,
+        99.9999999999998
+      ],
+      [
+        "Welding",
+        5.0,
+        99.9999999999998
+      ],
+      [
+        "Painting",
+        1.0,
+        99.9999999999998
+      ],
+      [
+        "Fit-up on Board",
+        15.0,
+        76.2699999999999
+      ],
+      [
+        "Install",
+        10.0,
+        74.2699999999999
+      ],
+      [
+        "Cable Connection",
+        10.0,
+        60.9200000000009
+      ],
+      [
+        "Testing",
+        10.0,
+        0
+      ],
+      [
+        "Delivery",
+        5.0,
+        0
+      ]
+    ]
+  },
+  {
+    "sheet": "Hull Outfitting",
+    "project_weight": 11.13289304704844,
+    "stages": [
+      [
+        "Purchase Order",
+        10.0,
+        99.9999999999998
+      ],
+      [
+        "Arrival at Yard",
+        30.0,
+        99.9999999999998
+      ],
+      [
+        "Marking, Cutting & Fit-up",
+        10.0,
+        99.9299964998248
+      ],
+      [
+        "Welding & Check",
+        10.0,
+        99.9299964998248
+      ],
+      [
+        "Coat / Paint / Galv.",
+        5.0,
+        99.8049902495123
+      ],
+      [
+        "Install on Board",
+        20.0,
+        91.3955697784888
+      ],
+      [
+        "Testing",
+        10.0,
+        17.4173723186176
+      ],
+      [
+        "Delivery",
+        5.0,
+        0
+      ]
+    ]
+  }
+]
