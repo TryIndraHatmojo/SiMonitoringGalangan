@@ -2,15 +2,6 @@ import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { BaselineCharts } from '@/components/baseline-charts';
-import { Comparison, Planning } from '@/components/report-planning';
-import { correct } from '@/routes/projects';
-import {
-    CostSummary,
-    CostInput,
-    EstimateEditor,
-} from '@/components/cost-monitoring';
-import { rupiah } from '@/types/monitoring';
 import { History } from '@/components/progress-history';
 import { WbsEditor } from '@/components/wbs-editor';
 import { workspace } from '@/routes';
@@ -127,10 +118,7 @@ function WorkDetail({
     } | null>(null);
     const group = groups.find((g) => g.id === gid) ?? groups[0];
     const item = group?.items.find((i) => i.id === iid) ?? group?.items[0];
-    const [correction, setCorrection] = useState(false);
-    const [reason, setReason] = useState('');
-    const canEdit =
-        editing && period !== null && (!period.closed_at || correction);
+    const canEdit = editing && period !== null && !period.closed_at;
     if (!group || !item)
         return (
             <section>
@@ -181,20 +169,6 @@ function WorkDetail({
                 <small>{group.name}</small>
                 <h2>{item.name}</h2>
                 <p>Bobot dalam proyek {percent(item.weight)}</p>
-                {editing && period?.closed_at && (
-                    <details
-                        onToggle={(e) => setCorrection(e.currentTarget.open)}
-                    >
-                        <summary>Koreksi resmi</summary>
-                        <label>
-                            Alasan koreksi
-                            <Input
-                                value={reason}
-                                onChange={(e) => setReason(e.target.value)}
-                            />
-                        </label>
-                    </details>
-                )}
                 {canEdit && (
                     <p id={realizationHintId}>
                         Isi 0 jika hasil pengukuran nol. Biarkan kosong jika
@@ -206,7 +180,7 @@ function WorkDetail({
                     onInput={(event) => {
                         const values = new FormData(event.currentTarget);
                         let progress: number | null = null;
-                        for (const stage of item.stages ?? group.stages) {
+                        for (const stage of group.stages) {
                             const raw = values.get(stage.id);
                             if (raw !== null && raw !== '') {
                                 progress =
@@ -220,32 +194,18 @@ function WorkDetail({
                         e.preventDefault();
                         if (period) {
                             const entries = new FormData(e.currentTarget);
-                            router.visit(
-                                period.closed_at
-                                    ? correct.url([project, period.id])
-                                    : update.url([project, period.id]),
+                            router.patch(
+                                update.url([project, period.id]),
                                 {
-                                    method: period.closed_at ? 'post' : 'patch',
-                                    data: {
-                                        reason,
-                                        item: item.id,
-                                        values: Object.fromEntries(
-                                            (item.stages ?? group.stages).map(
-                                                (stage) => {
-                                                    const value = entries.get(
-                                                        stage.id,
-                                                    );
-                                                    return [
-                                                        stage.id,
-                                                        typeof value ===
-                                                        'string'
-                                                            ? value
-                                                            : '',
-                                                    ];
-                                                },
-                                            ),
-                                        ),
-                                    },
+                                    item: item.id,
+                                    values: Object.fromEntries(
+                                        group.stages.map((s) => [
+                                            s.id,
+                                            String(entries.get(s.id) ?? ''),
+                                        ]),
+                                    ),
+                                },
+                                {
                                     preserveScroll: true,
                                     onSuccess: () => setPreview(null),
                                 },
@@ -262,7 +222,7 @@ function WorkDetail({
                             </tr>
                         </thead>
                         <tbody>
-                            {(item.stages ?? group.stages).map((s) => (
+                            {group.stages.map((s) => (
                                 <tr key={s.id}>
                                     <td>{s.name}</td>
                                     <td>{percent(s.weight)}</td>
@@ -275,9 +235,7 @@ function WorkDetail({
                                                 max="100"
                                                 step="0.0001"
                                                 aria-label={s.name}
-                                                aria-describedby={
-                                                    realizationHintId
-                                                }
+                                                aria-describedby={realizationHintId}
                                                 name={s.id}
                                                 defaultValue={
                                                     item.values?.[s.id] ?? ''
@@ -316,13 +274,6 @@ export default function Dashboard(props: Monitoring) {
     const { project, projects, section, period, revision, history, report } =
         props;
     const { errors } = usePage().props;
-    const [closingReason, setClosingReason] = useState('');
-    const [view, setView] = useState(() =>
-        typeof window !== 'undefined' &&
-        new URLSearchParams(window.location.search).get('view') === 'biaya'
-            ? 'biaya'
-            : 'progres',
-    );
     const create = section === 'baru' || !project;
     const title = create
         ? 'Buat proyek kapal'
@@ -350,42 +301,6 @@ export default function Dashboard(props: Monitoring) {
                             </Button>
                         </div>
                     )}
-                    {section === 'ringkasan' &&
-                        project &&
-                        !period?.closed_at && (
-                            <Button asChild className="mt-3">
-                                <Link
-                                    href={workspace(
-                                        !revision ? 'builder' : 'input',
-                                        {
-                                            query: {
-                                                project: project.id,
-                                                period: period?.id,
-                                                view:
-                                                    period?.metrics.BAC !=
-                                                        null &&
-                                                    report.expected ===
-                                                        report.measured &&
-                                                    !period.verified_at
-                                                        ? 'biaya'
-                                                        : 'progres',
-                                            },
-                                        },
-                                    )}
-                                >
-                                    {!revision
-                                        ? 'Susun baseline'
-                                        : !period
-                                          ? 'Buat periode'
-                                          : report.expected !== report.measured
-                                            ? 'Lengkapi progres'
-                                            : period.metrics.BAC != null &&
-                                                !period.verified_at
-                                              ? 'Lengkapi biaya'
-                                              : 'Tinjau penutupan'}
-                                </Link>
-                            </Button>
-                        )}
                     {project?.is_demo && !create && (
                         <span className="inline-block rounded-full bg-accent px-3 py-1 text-xs font-medium text-accent-foreground">
                             Data demo ASD Harbour Tug
@@ -406,12 +321,6 @@ export default function Dashboard(props: Monitoring) {
                 )}
                 {create ? (
                     <ProjectForm projects={projects} />
-                ) : section === 'estimasi' ? (
-                    <EstimateEditor
-                        key={project.id}
-                        project={project}
-                        groups={props.draft}
-                    />
                 ) : section === 'builder' ? (
                     <WbsEditor
                         key={project.id}
@@ -459,7 +368,6 @@ export default function Dashboard(props: Monitoring) {
                                 )}
                             </div>
                         )}
-                        {section === 'input' && <Planning data={props} />}
                         {section === 'input' && (
                             <section>
                                 <details open={!history.length}>
@@ -489,14 +397,10 @@ export default function Dashboard(props: Monitoring) {
                                                     min="0"
                                                     max="100"
                                                     name="target"
-                                                    placeholder={
-                                                        targetPlaceholder
-                                                    }
+                                                    placeholder={targetPlaceholder}
                                                 />
                                             </label>
-                                            <Button className="mt-6.5">
-                                                Buat periode
-                                            </Button>
+                                            <Button className="mt-6.5">Buat periode</Button>
                                         </Form>
                                     ) : (
                                         <p>
@@ -506,42 +410,7 @@ export default function Dashboard(props: Monitoring) {
                                 </details>
                             </section>
                         )}
-                        {(section === 'ringkasan' || section === 'input') &&
-                            period && (
-                                <nav
-                                    className="flex gap-2"
-                                    aria-label="Tampilan laporan"
-                                >
-                                    {['progres', 'biaya'].map((v) => (
-                                        <Button
-                                            key={v}
-                                            variant={
-                                                view === v
-                                                    ? 'default'
-                                                    : 'outline'
-                                            }
-                                            onClick={() => setView(v)}
-                                        >
-                                            {v === 'progres'
-                                                ? 'Progres'
-                                                : 'Biaya'}
-                                        </Button>
-                                    ))}
-                                </nav>
-                            )}
-                        {view === 'biaya' &&
-                        period &&
-                        section === 'ringkasan' ? (
-                            <CostSummary period={period} history={history} />
-                        ) : view === 'biaya' &&
-                          period &&
-                          section === 'input' ? (
-                            <CostInput
-                                key={period.id}
-                                project={project.id}
-                                period={period}
-                            />
-                        ) : section === 'ringkasan' ? (
+                        {section === 'ringkasan' ? (
                             <>
                                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                     {[
@@ -559,11 +428,7 @@ export default function Dashboard(props: Monitoring) {
                                         ],
                                         [
                                             'Engineering Estimate',
-                                            rupiah(
-                                                period
-                                                    ? period.metrics.BAC
-                                                    : props.activeEstimate?.bac,
-                                            ),
+                                            'Belum ada data',
                                         ],
                                     ].map(([label, value]) => (
                                         <section key={label}>
@@ -574,19 +439,7 @@ export default function Dashboard(props: Monitoring) {
                                         </section>
                                     ))}
                                 </div>
-                                <BaselineCharts data={props} />
-                                <Comparison data={props} />
-                                <History
-                                    history={history.map((p) =>
-                                        period && p.end > period.end
-                                            ? {
-                                                  ...p,
-                                                  actual: null,
-                                                  deviation: null,
-                                              }
-                                            : p,
-                                    )}
-                                />
+                                <History history={history} />
                                 <section>
                                     <h2>Kelompok pekerjaan</h2>
                                     {report.groups.length ? (
@@ -675,59 +528,28 @@ export default function Dashboard(props: Monitoring) {
                         )}
                         {section === 'input' && period && !period.closed_at && (
                             <section className="flex flex-wrap items-end justify-between gap-4">
-                                {!period.scheduled && (
-                                    <Form
-                                        key={period.id}
-                                        {...update.form([
-                                            project.id,
-                                            period.id,
-                                        ])}
-                                        className="flex items-end gap-2"
-                                    >
-                                        <label>
-                                            Target kumulatif (%)
-                                            <Input
-                                                name="target"
-                                                type="number"
-                                                min="0"
-                                                max="100"
-                                                step="0.0001"
-                                                defaultValue={
-                                                    period.target ?? ''
-                                                }
-                                                placeholder={targetPlaceholder}
-                                            />
-                                        </label>
-                                        <Button variant="outline">
-                                            Simpan target
-                                        </Button>
-                                    </Form>
-                                )}
-                                <label>
-                                    Alasan jika progres menurun
-                                    <Input
-                                        value={closingReason}
-                                        onChange={(e) =>
-                                            setClosingReason(e.target.value)
-                                        }
-                                    />
-                                </label>
-                                <p>
-                                    {report.expected - report.measured} tahap
-                                    belum diisi
-                                    {period.metrics.BAC != null &&
-                                    (!period.verified_at ||
-                                        period.target == null)
-                                        ? ' · Lengkapi target dan verifikasi biaya'
-                                        : ''}
-                                </p>
+                                <Form
+                                    key={period.id}
+                                    {...update.form([project.id, period.id])}
+                                    className="flex items-end gap-2"
+                                >
+                                    <label>
+                                        Target kumulatif (%)
+                                        <Input
+                                            name="target"
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            step="0.0001"
+                                            defaultValue={period.target ?? ''}
+                                            placeholder={targetPlaceholder}
+                                        />
+                                    </label>
+                                    <Button variant="outline">
+                                        Simpan target
+                                    </Button>
+                                </Form>
                                 <Button
-                                    disabled={
-                                        report.expected !== report.measured ||
-                                        (period.metrics.BAC != null &&
-                                            (!period.verified_at ||
-                                                period.target == null))
-                                    }
                                     variant="outline"
                                     onClick={() => {
                                         if (
@@ -740,10 +562,7 @@ export default function Dashboard(props: Monitoring) {
                                                     project.id,
                                                     period.id,
                                                 ]),
-                                                {
-                                                    close: true,
-                                                    reason: closingReason,
-                                                },
+                                                { close: true },
                                             );
                                     }}
                                 >

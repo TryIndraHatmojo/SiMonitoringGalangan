@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { structure } from '@/routes/projects';
-import type { Group, Item, WorkRow } from '@/types/monitoring';
+import type { Group, WorkRow } from '@/types/monitoring';
 import { percent } from '@/types/monitoring';
 
 function newId() {
@@ -124,7 +124,7 @@ export function WbsEditor({
                                         : 'Semua item dalam kelompok memakai tahap ini.'}
                                 </p>
                                 {group[key].map((row, i) => {
-                                    function edit(patch: Partial<Item>) {
+                                    function edit(patch: Partial<WorkRow>) {
                                         change({
                                             [key]: group[key].map((r, j) =>
                                                 i === j
@@ -155,78 +155,6 @@ export function WbsEditor({
                                                     }
                                                 />
                                             </label>
-                                            {key === 'items' && (
-                                                <label>
-                                                    Template tahap
-                                                    <select
-                                                        value={
-                                                            (row as Item)
-                                                                .template_name ??
-                                                            ''
-                                                        }
-                                                        onChange={(e) => {
-                                                            const name =
-                                                                e.target.value;
-                                                            const source =
-                                                                groups.find(
-                                                                    (g) =>
-                                                                        g.id ===
-                                                                        name,
-                                                                );
-                                                            const stages =
-                                                                source?.stages ?? [
-                                                                    {
-                                                                        id: newId(),
-                                                                        name: 'Pemeriksaan',
-                                                                        weight: 50,
-                                                                    },
-                                                                    {
-                                                                        id: newId(),
-                                                                        name: 'Pengujian',
-                                                                        weight: 50,
-                                                                    },
-                                                                ];
-                                                            edit({
-                                                                template_name:
-                                                                    name ||
-                                                                    undefined,
-                                                                stages: name
-                                                                    ? stages.map(
-                                                                          (
-                                                                              s,
-                                                                          ) => ({
-                                                                              ...s,
-                                                                          }),
-                                                                      )
-                                                                    : undefined,
-                                                            });
-                                                        }}
-                                                    >
-                                                        <option value="">
-                                                            Tahap kelompok
-                                                        </option>
-                                                        <option value="inspection">
-                                                            Pemeriksaan dan
-                                                            pengujian
-                                                        </option>
-                                                        {groups
-                                                            .filter(
-                                                                (g) =>
-                                                                    g.stages
-                                                                        .length >
-                                                                    0,
-                                                            )
-                                                            .map((g) => (
-                                                                <option
-                                                                    key={g.id}
-                                                                    value={g.id}
-                                                                >
-                                                                    {g.name}
-                                                                </option>
-                                                            ))}
-                                                    </select>
-                                                </label>
-                                            )}
                                             <label>
                                                 Bobot (%)
                                                 <Input
