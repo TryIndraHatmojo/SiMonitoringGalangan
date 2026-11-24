@@ -2,7 +2,7 @@ import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { structure } from '@/routes/projects';
+import { formBuilderTemplate, structure } from '@/routes/projects';
 import type { Group, WorkRow } from '@/types/monitoring';
 import { percent } from '@/types/monitoring';
 
@@ -55,6 +55,13 @@ export function WbsEditor({
         rows.reduce((n, row) => n + Number(row.weight), 0);
     return (
         <>
+            <div className="flex justify-end">
+                <Button asChild variant="outline">
+                    <a href={formBuilderTemplate.url()} download>
+                        Unduh Template Excel
+                    </a>
+                </Button>
+            </div>
             <div className="grid items-start gap-4 lg:grid-cols-[15rem_1fr]">
                 <section>
                     <h2>Kelompok kerja</h2>

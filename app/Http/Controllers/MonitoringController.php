@@ -15,6 +15,7 @@ use Illuminate\Validation\Rules\Unique;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class MonitoringController extends Controller
 {
@@ -88,6 +89,13 @@ class MonitoringController extends Controller
         }
 
         return Inertia::render('dashboard', compact('projects', 'project', 'draft', 'period', 'history', 'section', 'report', 'estimate', 'bac', 'hasEstimate') + ['revision' => $baseline->revision ?? 0]);
+    }
+
+    public function downloadFormBuilderTemplate(): BinaryFileResponse
+    {
+        return response()->download(resource_path('form-builder-template.xlsx'), 'Template-Form-Builder.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     public function store(Request $request): RedirectResponse

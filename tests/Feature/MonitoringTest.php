@@ -13,6 +13,27 @@ class MonitoringTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_verified_user_can_download_the_form_builder_template(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $this->get(route('projects.formBuilderTemplate'))
+            ->assertOk()
+            ->assertDownload('Template-Form-Builder.xlsx')
+            ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    }
+
+    public function test_form_builder_template_download_requires_a_verified_account(): void
+    {
+        $url = route('projects.formBuilderTemplate');
+
+        $this->get($url)->assertRedirectToRoute('login');
+
+        $this->actingAs(User::factory()->unverified()->create());
+
+        $this->get($url)->assertRedirectToRoute('verification.notice');
+    }
+
     private function vessel(string $code, ?int $source = null): int
     {
         $this->post(route('projects.store'), ['code' => $code, 'name' => $code, 'yard' => 'Galangan', 'start' => '2026-01-01', 'end' => '2026-12-31', 'source' => $source])->assertSessionHasNoErrors();
