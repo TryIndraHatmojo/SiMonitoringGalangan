@@ -1,3 +1,6 @@
+export type EstimateLine = { code: string; name: string; unit: string; quantity: string; local: string; usd: string; item: string };
+export type Estimate = { rate: string; date: string; source: string; assumption: boolean; lines: EstimateLine[]; bac?: string };
+export const rupiah = (value: number | string | null | undefined) => value == null ? 'Belum tersedia' : Number(value).toLocaleString('id-ID', {style:'currency', currency:'IDR', maximumFractionDigits:2});
 export type Weight = string | number | null;
 export type WorkRow = { id: string; name: string; weight: Weight };
 export type Item = WorkRow & {
@@ -19,6 +22,7 @@ export type Ship = {
     code: string;
     yard: string;
     is_demo: boolean;
+    estimate: Estimate | null;
     start: string;
     end: string;
 };
@@ -29,6 +33,11 @@ export type Period = {
     target: Weight;
     revision: number;
     closed_at: string | null;
+    metrics: Record<string, number | null>;
+    actual_cost: string | null;
+    cost_source: string | null;
+    cost_simulated: boolean;
+    verified_at: string | null;
     actual: number | null;
     reported_actual: Weight;
     is_simulated: boolean;
@@ -54,7 +63,8 @@ export const sections = {
     ringkasan: 'Ringkasan',
     wbs: 'Struktur Pekerjaan dan Pengukuran Progres',
     builder: 'Form Builder',
-    input: 'Input Progres',
+    estimasi: 'Estimasi biaya',
+    input: 'Input Laporan',
     baru: 'Buat proyek',
 };
 export function percent(value: Weight | undefined, unit = '%') {

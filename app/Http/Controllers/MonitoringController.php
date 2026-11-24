@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\CostReport;
 use App\Support\ProgressReport;
+use Brick\Math\BigDecimal;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
@@ -24,7 +26,7 @@ class MonitoringController extends Controller
     private function periods(int $project): Builder
     {
         return DB::table('report_periods as p')->join('baselines as b', 'b.id', '=', 'p.baseline_id')
-            ->where('b.project_id', $project)->select('p.*', 'b.revision', 'b.structure');
+            ->where('b.project_id', $project)->select('p.*', 'b.revision', 'b.structure', 'b.estimate');
     }
 
     public function index(Request $request): Response
@@ -35,11 +37,13 @@ class MonitoringController extends Controller
         if ($project) {
             $project->is_demo = (bool) $project->is_demo;
         }
+        if ($project) {
+            $project->estimate = json_decode($project->estimate ?? 'null', true);
+        }
         $draft = $project ? json_decode($project->draft, true) : [];
         $periods = $this->periods($project->id ?? 0)->orderBy('p.end')->get();
-        $defaultPeriod = $project?->is_demo && $section === 'ringkasan'
-            ? ($periods->whereNotNull('closed_at')->last() ?? $periods->last())
-            : $periods->last();
+        $measuredPeriods = DB::table('measurements')->whereIn('period_id', $periods->pluck('id'))->distinct()->pluck('period_id')->flip();
+        $defaultPeriod = $periods->last(fn ($row) => $row->closed_at || $row->actual_cost !== null || $row->reported_actual !== null || $measuredPeriods->has($row->id)) ?? $periods->first();
         $period = $request->filled('period') ? $periods->firstWhere('id', $request->integer('period')) : $defaultPeriod;
         abort_if($request->filled('period') && ! $period, 404);
         $baseline = DB::table('baselines')->where('project_id', $project->id ?? 0)->orderByDesc('revision')->first();
@@ -52,6 +56,9 @@ class MonitoringController extends Controller
                 $entry['actual'] = (float) $row->reported_actual;
             }
             $row->actual = $entry['actual'];
+            $estimate = json_decode($row->estimate ?? 'null', true);
+            $row->metrics = CostReport::metrics($estimate ? (float) $estimate['bac'] : null, $row->target === null ? null : (float) $row->target, $row->actual, $row->actual_cost === null ? null : (float) $row->actual_cost);
+            unset($row->estimate);
             $row->is_simulated = (bool) $row->is_simulated;
             $row->partial = $row->reported_actual === null && $entry['measured'] < $entry['expected'];
             $row->deviation = $row->target !== null && $row->actual !== null ? $row->actual - $row->target : null;
@@ -122,6 +129,23 @@ class MonitoringController extends Controller
         ];
     }
 
+    public function estimate(Request $request, int $project): RedirectResponse
+    {
+        DB::transaction(function () use ($request, $project) {
+            $record = $this->owned($request)->where('id', $project)->lockForUpdate()->firstOrFail();
+            $data = $request->validate([
+                'rate' => 'required|numeric|gt:0|decimal:0,6', 'date' => 'required|date_format:Y-m-d', 'source' => 'required|string|max:255', 'assumption' => 'required|boolean',
+                'lines' => 'required|array|list|min:1', 'lines.*' => 'array:code,name,unit,quantity,local,usd,item',
+                'lines.*.code' => 'required|string|distinct|max:100', 'lines.*.name' => 'required|string|max:255', 'lines.*.unit' => 'required|string|max:40',
+                'lines.*.quantity' => 'required|numeric|gt:0|decimal:0,6', 'lines.*.local' => 'required|numeric|min:0|decimal:0,6', 'lines.*.usd' => 'required|numeric|min:0|decimal:0,6', 'lines.*.item' => 'required|uuid',
+            ]);
+            $estimate = CostReport::estimate($data, json_decode($record->draft, true));
+            DB::table('projects')->where('id', $project)->update(['estimate' => json_encode($estimate, JSON_THROW_ON_ERROR)]);
+        });
+
+        return back();
+    }
+
     public function structure(Request $request, int $project): RedirectResponse
     {
         $this->owned($request)->where('id', $project)->firstOrFail();
@@ -135,6 +159,21 @@ class MonitoringController extends Controller
             $rules += [$path => $list, "$path.*" => 'array:id,name,weight', "$path.*.id" => 'required|uuid|distinct:ignore_case', "$path.*.name" => $name, "$path.*.weight" => $weight];
         }
         $groups = $request->validate($rules)['groups'];
+        $estimate = $this->owned($request)->where('id', $project)->value('estimate');
+        if ($publish && $estimate) {
+            $weights = json_decode($estimate, true)['weights'];
+            $itemIds = collect($groups)->flatMap(fn ($group) => array_column($group['items'], 'id'))->all();
+            if (array_diff(array_keys($weights), $itemIds)) {
+                throw ValidationException::withMessages(['groups' => 'Perbarui pemetaan EE untuk item yang dihapus.']);
+            }
+            foreach ($groups as &$group) {
+                foreach ($group['items'] as &$item) {
+                    $item['weight'] = $weights[$item['id']] ?? 0;
+                }
+                unset($item);
+            }
+            unset($group);
+        }
         if ($publish) {
             $units = fn (array $rows): int => array_sum(array_map(fn ($row) => (int) round($row['weight'] * 1000000), $rows));
             $total = 0;
@@ -148,13 +187,16 @@ class MonitoringController extends Controller
                 throw ValidationException::withMessages(['groups' => 'Total bobot item seluruh proyek harus 100%.']);
             }
         }
-        DB::transaction(function () use ($request, $project, $groups, $publish) {
-            $this->owned($request)->lockForUpdate()->where('id', $project)->firstOrFail();
+        DB::transaction(function () use ($request, $project, $groups, $publish, $estimate) {
+            $record = $this->owned($request)->lockForUpdate()->where('id', $project)->firstOrFail();
+            if ($publish && $record->estimate !== $estimate) {
+                throw ValidationException::withMessages(['groups' => 'Estimasi berubah. Muat ulang sebelum menerbitkan.']);
+            }
             $json = json_encode($groups, JSON_THROW_ON_ERROR);
             DB::table('projects')->where('id', $project)->update(['draft' => $json]);
             if ($publish) {
                 $query = DB::table('baselines')->where('project_id', $project);
-                $query->insert(['project_id' => $project, 'revision' => 1 + $query->max('revision'), 'structure' => $json]);
+                $query->insert(['project_id' => $project, 'revision' => 1 + $query->max('revision'), 'structure' => $json, 'estimate' => $estimate]);
             }
         });
 
@@ -185,7 +227,19 @@ class MonitoringController extends Controller
             if ($report->closed_at) {
                 throw ValidationException::withMessages(['period' => 'Periode telah ditutup.']);
             }
+            if ($request->has('actual_cost')) {
+                $cost = $request->validate(['actual_cost' => 'nullable|numeric|min:0|max:9999999999999999|decimal:0,2', 'cost_source' => 'nullable|required_with:actual_cost|string|max:255', 'verify' => 'sometimes|boolean']);
+                $same = $report->actual_cost !== null && $cost['actual_cost'] !== null && BigDecimal::of((string) $report->actual_cost)->isEqualTo((string) $cost['actual_cost']) && $report->cost_source === ($cost['cost_source'] ?? null);
+                $verified = $same && $request->boolean('verify');
+                DB::table('report_periods')->where('id', $period)->update(['actual_cost' => $cost['actual_cost'], 'cost_source' => $cost['cost_source'] ?? null, 'cost_simulated' => false, 'verified_at' => $verified ? now() : null, 'verified_by' => $verified ? $request->user()->id : null]);
+
+                return;
+            }
             if ($request->boolean('close')) {
+                $progress = ProgressReport::calculate(json_decode($report->structure, true), DB::table('measurements')->where('period_id', $period)->get());
+                if ($progress['measured'] < $progress['expected'] || ($report->estimate && ($report->target === null || ! $report->verified_at || $report->cost_simulated))) {
+                    throw ValidationException::withMessages(['period' => 'Lengkapi semua tahap serta target dan biaya terverifikasi untuk baseline EE.']);
+                }
                 DB::table('report_periods')->where('id', $period)->update(['closed_at' => now()]);
 
                 return;

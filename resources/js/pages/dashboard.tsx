@@ -2,6 +2,8 @@ import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CostSummary, CostInput, EstimateEditor } from '@/components/cost-monitoring';
+import { rupiah } from '@/types/monitoring';
 import { History } from '@/components/progress-history';
 import { WbsEditor } from '@/components/wbs-editor';
 import { workspace } from '@/routes';
@@ -274,6 +276,7 @@ export default function Dashboard(props: Monitoring) {
     const { project, projects, section, period, revision, history, report } =
         props;
     const { errors } = usePage().props;
+    const [view,setView] = useState('progres');
     const create = section === 'baru' || !project;
     const title = create
         ? 'Buat proyek kapal'
@@ -321,7 +324,7 @@ export default function Dashboard(props: Monitoring) {
                 )}
                 {create ? (
                     <ProjectForm projects={projects} />
-                ) : section === 'builder' ? (
+                ) : section === 'estimasi' ? <EstimateEditor key={project.id} project={project} groups={props.draft}/> : section === 'builder' ? (
                     <WbsEditor
                         key={project.id}
                         project={project.id}
@@ -410,7 +413,8 @@ export default function Dashboard(props: Monitoring) {
                                 </details>
                             </section>
                         )}
-                        {section === 'ringkasan' ? (
+                        {(section==='ringkasan'||section==='input') && period && <nav className="flex gap-2" aria-label="Tampilan laporan">{['progres','biaya'].map(v=><Button key={v} variant={view===v?'default':'outline'} onClick={()=>setView(v)}>{v==='progres'?'Progres':'Biaya'}</Button>)}</nav>}
+                        {view==='biaya' && period && section==='ringkasan' ? <CostSummary period={period} history={history}/> : view==='biaya' && period && section==='input' ? <CostInput key={period.id} project={project.id} period={period}/> : section === 'ringkasan' ? (
                             <>
                                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                     {[
@@ -428,7 +432,7 @@ export default function Dashboard(props: Monitoring) {
                                         ],
                                         [
                                             'Engineering Estimate',
-                                            'Belum ada data',
+                                            rupiah(period?.metrics.BAC),
                                         ],
                                     ].map(([label, value]) => (
                                         <section key={label}>
@@ -439,7 +443,7 @@ export default function Dashboard(props: Monitoring) {
                                         </section>
                                     ))}
                                 </div>
-                                <History history={history} />
+                                <History history={history.map(p=>period && p.end>period.end?{...p,actual:null,deviation:null}:p)} />
                                 <section>
                                     <h2>Kelompok pekerjaan</h2>
                                     {report.groups.length ? (

@@ -131,6 +131,9 @@ class MonitoringTest extends TestCase
         $this->patch($url, ['item' => $item['id'], 'values' => [$prep['id'] => 100]])->assertSessionHasNoErrors();
         $this->assertDatabaseCount('measurements', 1);
         $this->get($summary)->assertInertia(fn (Assert $page) => $page->where('report.actual', 6)->where('period.partial', true)->where('period.deviation', -14));
+        $this->patch($url, ['close' => true])->assertSessionHasErrors('period');
+        $this->patch($url, ['item' => $item['id'], 'values' => [$paint['id'] => 0]])->assertSessionHasNoErrors();
+        $this->patch($url, ['item' => $group['items'][1]['id'], 'values' => [$prep['id'] => 0, $paint['id'] => 0]])->assertSessionHasNoErrors();
         $this->patch($url, ['close' => true])->assertSessionHasNoErrors();
         $this->patch($url, ['target' => 75])->assertSessionHasErrors('period');
         $b = $this->vessel('Ferry', $a);

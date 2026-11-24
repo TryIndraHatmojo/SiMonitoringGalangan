@@ -25,6 +25,7 @@ export function AppSidebar() {
         ['ringkasan', ChartNoAxesCombined],
         ['wbs', Layers],
         ['builder', PanelsTopLeft],
+        ['estimasi', Layers],
         ['input', ListChecks],
     ] as const;
     return (
