@@ -97,9 +97,6 @@
     .monitoring label {
         @apply grid gap-1.5 text-sm font-medium;
     }
-    .monitoring select {
-        @apply max-w-full rounded-md border border-input bg-background px-3 py-2;
-    }
     .monitoring table {
         @apply w-full text-sm;
     }

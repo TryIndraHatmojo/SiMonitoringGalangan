@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
+import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { workspace } from '@/routes';
 import { update } from '@/routes/projects/estimate';
@@ -331,44 +332,41 @@ export function EstimateEditor({
                                     </label>
                                 );
                             })}
-                            <label>
-                                Item WBS tujuan
-                                <select
+                            <div className="grid min-w-0 gap-1.5">
+                                <label htmlFor="estimate-wbs-item">
+                                    Item WBS tujuan
+                                </label>
+                                <Combobox
+                                    id="estimate-wbs-item"
+                                    label="Item WBS tujuan"
                                     value={editingLine.wbs_item_id ?? ''}
-                                    onChange={(event) =>
+                                    onValueChange={(value) =>
                                         changeLine({
-                                            wbs_item_id:
-                                                event.target.value || null,
+                                            wbs_item_id: value || null,
                                         })
                                     }
-                                >
-                                    <option value="">Belum dipetakan</option>
-                                    {editingLine.wbs_item_id &&
-                                        !items.has(editingLine.wbs_item_id) && (
-                                            <option
-                                                value={editingLine.wbs_item_id}
-                                            >
-                                                Item sudah dihapus
-                                            </option>
-                                        )}
-                                    {groups.map((group) => (
-                                        <optgroup
-                                            key={group.id}
-                                            label={
-                                                group.name || 'Kelompok baru'
-                                            }
-                                        >
-                                            {group.items.map((item) => (
-                                                <option
-                                                    key={item.id}
-                                                    value={item.id.toLowerCase()}
-                                                >
-                                                    {item.name || 'Item baru'}
-                                                </option>
-                                            ))}
-                                        </optgroup>
-                                    ))}
-                                </select>
+                                    options={[
+                                        { value: '', label: 'Belum dipetakan' },
+                                        ...(editingLine.wbs_item_id &&
+                                        !items.has(editingLine.wbs_item_id)
+                                            ? [
+                                                  {
+                                                      value: editingLine.wbs_item_id,
+                                                      label: 'Item sudah dihapus',
+                                                  },
+                                              ]
+                                            : []),
+                                        ...groups.flatMap((group) =>
+                                            group.items.map((item) => ({
+                                                value: item.id.toLowerCase(),
+                                                label: item.name || 'Item baru',
+                                                group:
+                                                    group.name ||
+                                                    'Kelompok baru',
+                                            })),
+                                        ),
+                                    ]}
+                                />
                                 <InputError
                                     message={
                                         form.errors[
@@ -376,7 +374,7 @@ export function EstimateEditor({
                                         ]
                                     }
                                 />
-                            </label>
+                            </div>
                             <label className="flex items-center gap-2 self-end pb-2">
                                 <input
                                     type="checkbox"
@@ -432,23 +430,27 @@ export function EstimateEditor({
                             }}
                         />
                     </label>
-                    <label>
-                        Kelompok pekerjaan
-                        <select
+                    <div className="grid min-w-0 gap-1.5">
+                        <label htmlFor="estimate-work-group">
+                            Kelompok pekerjaan
+                        </label>
+                        <Combobox
+                            id="estimate-work-group"
+                            label="Kelompok pekerjaan"
                             value={filter}
-                            onChange={(event) => {
-                                setFilter(event.target.value);
+                            onValueChange={(value) => {
+                                setFilter(value);
                                 setPage(0);
                             }}
-                        >
-                            <option value="">Semua kelompok</option>
-                            {groups.map((group) => (
-                                <option key={group.id} value={group.id}>
-                                    {group.name}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
+                            options={[
+                                { value: '', label: 'Semua kelompok' },
+                                ...groups.map(({ id, name }) => ({
+                                    value: id,
+                                    label: name,
+                                })),
+                            ]}
+                        />
+                    </div>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-lg">

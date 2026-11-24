@@ -1,5 +1,6 @@
 import { Link, router, usePage } from '@inertiajs/react';
 import { Breadcrumbs } from '@/components/breadcrumbs';
+import { Combobox } from '@/components/ui/combobox';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { workspace } from '@/routes';
 import type { BreadcrumbItem } from '@/types';
@@ -15,35 +16,42 @@ export function AppSidebarHeader({
             <SidebarTrigger />
             {projects ? (
                 <>
-                    <label className="flex items-center gap-2 text-sm">
-                        <span className="hidden sm:inline">Proyek kapal</span>
-                        <select
-                            aria-label="Proyek kapal"
-                            className="max-w-52 rounded border bg-background p-2"
-                            value={project?.id ?? ''}
-                            onChange={(e) =>
+                    <div className="flex min-w-0 items-center gap-2 text-sm">
+                        <label
+                            htmlFor="active-project"
+                            className="hidden shrink-0 sm:inline"
+                        >
+                            Proyek kapal
+                        </label>
+                        <Combobox
+                            id="active-project"
+                            label="Proyek kapal"
+                            className="w-52"
+                            placeholder={
+                                projects.length
+                                    ? 'Pilih proyek kapal'
+                                    : 'Belum ada proyek'
+                            }
+                            disabled={projects.length === 0}
+                            value={String(project?.id ?? '')}
+                            onValueChange={(value) =>
                                 router.visit(
                                     workspace(
                                         section === 'baru'
                                             ? 'ringkasan'
                                             : section,
-                                        { query: { project: e.target.value } },
+                                        { query: { project: value } },
                                     ),
                                 )
                             }
-                        >
-                            {!projects.length && (
-                                <option>Belum ada proyek</option>
-                            )}
-                            {projects.map((p) => (
-                                <option value={p.id} key={p.id}>
-                                    {p.name}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
+                            options={projects.map(({ id, name }) => ({
+                                value: String(id),
+                                label: name,
+                            }))}
+                        />
+                    </div>
                     <Link
-                        className="ml-auto text-sm font-medium text-primary"
+                        className="ml-auto shrink-0 text-sm font-medium text-primary"
                         href={workspace('baru')}
                     >
                         + Buat proyek

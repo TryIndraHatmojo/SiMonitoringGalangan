@@ -2,6 +2,7 @@ import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { useId, useState } from 'react';
 import { EstimateEditor } from '@/components/estimate-editor';
 import { Button } from '@/components/ui/button';
+import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { History } from '@/components/progress-history';
 import { WbsEditor } from '@/components/wbs-editor';
@@ -48,6 +49,8 @@ function DateField({
 }
 
 function ProjectForm({ projects }: Pick<Monitoring, 'projects'>) {
+    const [source, setSource] = useState('');
+
     return (
         <section>
             <h2>Identitas proyek kapal</h2>
@@ -80,17 +83,23 @@ function ProjectForm({ projects }: Pick<Monitoring, 'projects'>) {
                     label="Selesai pembangunan"
                     example="20 Oktober 2020"
                 />
-                <label>
-                    Struktur awal
-                    <select name="source">
-                        <option value="">Mulai dari struktur kosong</option>
-                        {projects.map((p) => (
-                            <option key={p.id} value={p.id}>
-                                Salin struktur dari {p.name}
-                            </option>
-                        ))}
-                    </select>
-                </label>
+                <div className="grid min-w-0 gap-1.5">
+                    <label htmlFor="project-source">Struktur awal</label>
+                    <Combobox
+                        id="project-source"
+                        label="Struktur awal"
+                        name="source"
+                        value={source}
+                        onValueChange={setSource}
+                        options={[
+                            { value: '', label: 'Mulai dari struktur kosong' },
+                            ...projects.map((project) => ({
+                                value: String(project.id),
+                                label: `Salin struktur dari ${project.name}`,
+                            })),
+                        ]}
+                    />
+                </div>
                 <Button className="justify-self-start">Buat proyek</Button>
             </Form>
         </section>
@@ -131,40 +140,40 @@ function WorkDetail({
         <>
             <section>
                 <h2>Pilih pekerjaan</h2>
-                <div className="flex flex-wrap gap-4">
-                    <label>
-                        Kelompok pekerjaan
-                        <select
+                <div className="grid items-start gap-4 sm:grid-cols-2">
+                    <div className="grid min-w-0 gap-1.5">
+                        <label htmlFor="work-group">Kelompok pekerjaan</label>
+                        <Combobox
+                            id="work-group"
+                            label="Kelompok pekerjaan"
                             value={group.id}
-                            onChange={(e) => {
-                                setGroup(e.target.value);
+                            onValueChange={(value) => {
+                                setGroup(value);
                                 setItem('');
                                 setPreview(null);
                             }}
-                        >
-                            {groups.map((g) => (
-                                <option key={g.id} value={g.id}>
-                                    {g.name}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <label>
-                        Item pekerjaan
-                        <select
+                            options={groups.map((group) => ({
+                                value: group.id,
+                                label: group.name,
+                            }))}
+                        />
+                    </div>
+                    <div className="grid min-w-0 gap-1.5">
+                        <label htmlFor="work-item">Item pekerjaan</label>
+                        <Combobox
+                            id="work-item"
+                            label="Item pekerjaan"
                             value={item.id}
-                            onChange={(e) => {
-                                setItem(e.target.value);
+                            onValueChange={(value) => {
+                                setItem(value);
                                 setPreview(null);
                             }}
-                        >
-                            {group.items.map((i) => (
-                                <option key={i.id} value={i.id}>
-                                    {i.name}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
+                            options={group.items.map((item) => ({
+                                value: item.id,
+                                label: item.name,
+                            }))}
+                        />
+                    </div>
                 </div>
             </section>
             <section>
@@ -343,28 +352,34 @@ export default function Dashboard(props: Monitoring) {
                     <>
                         {history.length > 0 && (
                             <div className="flex flex-wrap items-end gap-4">
-                                <label>
-                                    Periode laporan
-                                    <select
-                                        value={period?.id}
-                                        onChange={(e) =>
+                                <div className="grid w-full min-w-0 gap-1.5 sm:w-56">
+                                    <label htmlFor="report-period">
+                                        Periode laporan
+                                    </label>
+                                    <Combobox
+                                        id="report-period"
+                                        label="Periode laporan"
+                                        value={String(
+                                            period?.id ?? history[0]?.id ?? '',
+                                        )}
+                                        onValueChange={(value) =>
                                             router.visit(
                                                 workspace(section, {
                                                     query: {
                                                         project: project.id,
-                                                        period: e.target.value,
+                                                        period: value,
                                                     },
                                                 }),
                                             )
                                         }
-                                    >
-                                        {history.map((p) => (
-                                            <option key={p.id} value={p.id}>
-                                                {p.start} s.d. {p.end}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
+                                        options={history.map(
+                                            ({ id, start, end }) => ({
+                                                value: String(id),
+                                                label: `${start} s.d. ${end}`,
+                                            }),
+                                        )}
+                                    />
+                                </div>
                                 <p>
                                     Revisi {period?.revision} :{' '}
                                     {period?.closed_at ? 'Ditutup' : 'Terbuka'},{' '}
