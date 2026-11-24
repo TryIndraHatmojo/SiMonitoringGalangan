@@ -44,11 +44,9 @@ export type EstimateLineInput = {
     local_price_is_lump_sum: boolean;
     usd_unit_price: string | null;
     wbs_item_id: string | null;
-    source_reference: string | null;
 };
 export type EstimateLine = EstimateLineInput & {
     position: number;
-    source_work_group: string | null;
     local_idr: string | null;
     import_usd: string | null;
     equivalent_idr: string | null;
@@ -56,9 +54,7 @@ export type EstimateLine = EstimateLineInput & {
 export type EstimateInput = {
     exchange_rate_idr_per_usd: string | null;
     exchange_rate_date: string | null;
-    exchange_rate_source: string | null;
     exchange_rate_is_assumption: boolean;
-    source_reference: string | null;
     lines: EstimateLineInput[];
 };
 export type EstimateDraft = Omit<EstimateInput, 'lines'> & {

@@ -20,7 +20,6 @@ const LINE_FIELDS = [
     ['unit', 'Satuan', 'text'],
     ['local_price_idr', 'Harga lokal (Rp)', 'decimal'],
     ['usd_unit_price', 'Harga satuan impor (USD)', 'decimal'],
-    ['source_reference', 'Referensi sumber', 'text'],
 ] as const;
 
 const PAGE_SIZE = 25;
@@ -31,10 +30,8 @@ function draftInput(estimate: EstimateDraft | null): EstimateInput {
             estimate?.exchange_rate_idr_per_usd,
         ),
         exchange_rate_date: estimate?.exchange_rate_date ?? null,
-        exchange_rate_source: estimate?.exchange_rate_source ?? null,
         exchange_rate_is_assumption:
             estimate?.exchange_rate_is_assumption ?? true,
-        source_reference: estimate?.source_reference ?? null,
         lines: (estimate?.lines ?? []).map((row) => ({
             id: row.id,
             description: row.description,
@@ -44,7 +41,6 @@ function draftInput(estimate: EstimateDraft | null): EstimateInput {
             local_price_is_lump_sum: row.local_price_is_lump_sum,
             usd_unit_price: trimDecimal(row.usd_unit_price),
             wbs_item_id: row.wbs_item_id,
-            source_reference: row.source_reference,
         })),
     };
 }
@@ -96,11 +92,7 @@ export function EstimateEditor({
         .filter(
             ({ line, mapping }) =>
                 (!filter || mapping?.group.id === filter) &&
-                [
-                    line.description,
-                    line.source_reference,
-                    mapping?.item.name,
-                ].some((value) =>
+                [line.description, mapping?.item.name].some((value) =>
                     value
                         ?.toLocaleLowerCase('id-ID')
                         .includes(search.trim().toLocaleLowerCase('id-ID')),
@@ -133,7 +125,6 @@ export function EstimateEditor({
                 local_price_is_lump_sum: false,
                 usd_unit_price: null,
                 wbs_item_id: null,
-                source_reference: null,
             },
         ]);
         setEditing(id);
@@ -175,7 +166,7 @@ export function EstimateEditor({
             <section>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <h2>Kurs dan sumber estimasi</h2>
+                        <h2>Kurs estimasi</h2>
                         <p>Anggaran dasar dihitung sebelum profit galangan.</p>
                     </div>
                     <Button
@@ -222,36 +213,6 @@ export function EstimateEditor({
                             />
                             <InputError
                                 message={form.errors.exchange_rate_date}
-                            />
-                        </label>
-                        <label>
-                            Sumber kurs
-                            <Input
-                                value={form.data.exchange_rate_source ?? ''}
-                                onChange={(event) =>
-                                    form.setData(
-                                        'exchange_rate_source',
-                                        event.target.value,
-                                    )
-                                }
-                            />
-                            <InputError
-                                message={form.errors.exchange_rate_source}
-                            />
-                        </label>
-                        <label>
-                            Referensi dokumen EE
-                            <Input
-                                value={form.data.source_reference ?? ''}
-                                onChange={(event) =>
-                                    form.setData(
-                                        'source_reference',
-                                        event.target.value,
-                                    )
-                                }
-                            />
-                            <InputError
-                                message={form.errors.source_reference}
                             />
                         </label>
                     </div>
@@ -461,7 +422,7 @@ export function EstimateEditor({
                 )}
                 <div className="my-4 grid gap-3 sm:grid-cols-2">
                     <label>
-                        Cari uraian, item, atau referensi
+                        Cari uraian atau item WBS
                         <Input
                             type="search"
                             value={search}
@@ -511,11 +472,6 @@ export function EstimateEditor({
                                     <tr key={line.id}>
                                         <td>
                                             {line.description || 'Uraian baru'}
-                                            {line.source_reference && (
-                                                <span className="block text-xs text-muted-foreground">
-                                                    {line.source_reference}
-                                                </span>
-                                            )}
                                         </td>
                                         <td>
                                             {mapping?.item.name ||
@@ -525,16 +481,6 @@ export function EstimateEditor({
                                                     {mapping.group.name}
                                                 </span>
                                             )}
-                                            {source?.source_work_group &&
-                                                source.source_work_group !==
-                                                    mapping?.group.name && (
-                                                    <span className="block text-xs text-muted-foreground">
-                                                        Label Excel:{' '}
-                                                        {
-                                                            source.source_work_group
-                                                        }
-                                                    </span>
-                                                )}
                                         </td>
                                         <td className="whitespace-nowrap tabular-nums">
                                             {money(source?.equivalent_idr)}

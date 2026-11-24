@@ -375,7 +375,7 @@ export default function Dashboard(props: Monitoring) {
                                     <p>Realisasi tahap simulasi</p>
                                 )}
                                 {period?.reported_actual != null && (
-                                    <p>Realisasi dari ringkasan proyek Excel</p>
+                                    <p>Realisasi dari ringkasan proyek</p>
                                 )}
                             </div>
                         )}

@@ -71,7 +71,7 @@ class MonitoringController extends Controller
             $estimateDraft = EngineeringEstimate::find($project->id, 0);
             if ($section === 'estimasi' && $estimateDraft) {
                 $settings = EngineeringEstimate::settings($estimateDraft);
-                $estimate = $settings + EngineeringEstimate::preview(
+                $estimate = Arr::except($settings, ['source_reference', 'exchange_rate_source']) + EngineeringEstimate::preview(
                     EngineeringEstimate::lines($estimateDraft->id),
                     $settings['exchange_rate_idr_per_usd'],
                 );
@@ -193,10 +193,11 @@ class MonitoringController extends Controller
                     ...Arr::except($line, ['id', 'wbs_item_id']),
                     'wbs_item_id' => $item,
                     'source_work_group' => $original[$id]['source_work_group'] ?? null,
-                ] + array_fill_keys(['quantity', 'unit', 'local_price_idr', 'usd_unit_price', 'source_reference'], null);
+                ] + ['source_reference' => $original[$id]['source_reference'] ?? null]
+                    + array_fill_keys(['quantity', 'unit', 'local_price_idr', 'usd_unit_price'], null);
             }
             $settings = Arr::except($data, ['lines']) + array_fill_keys([
-                'exchange_rate_idr_per_usd', 'exchange_rate_date', 'exchange_rate_source', 'source_reference',
+                'exchange_rate_idr_per_usd', 'exchange_rate_date',
             ], null);
             EngineeringEstimate::store($project, 0, $settings, $lines);
         });

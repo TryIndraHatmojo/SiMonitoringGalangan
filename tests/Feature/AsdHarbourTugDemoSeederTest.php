@@ -74,6 +74,10 @@ class AsdHarbourTugDemoSeederTest extends TestCase
         $this->get(route('workspace', ['section' => 'estimasi', 'project' => $project->id]))
             ->assertInertia(fn (Assert $page) => $page
                 ->has('estimate.lines', 310)
+                ->missing('estimate.source_reference')
+                ->missing('estimate.exchange_rate_source')
+                ->missing('estimate.lines.0.source_reference')
+                ->missing('estimate.lines.0.source_work_group')
                 ->where('estimate.local_idr', '20090438720.00')
                 ->where('estimate.import_usd', '3039516.95')
                 ->where('estimate.equivalent_idr', '60023612409.10')

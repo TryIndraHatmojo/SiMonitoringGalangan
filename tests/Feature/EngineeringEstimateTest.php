@@ -95,6 +95,29 @@ class EngineeringEstimateTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('bac', null)->where('report.groups.0.items.0.weight', 100));
     }
 
+    public function test_saving_an_existing_estimate_preserves_its_source_metadata(): void
+    {
+        [$project, $group] = $this->createProject();
+        $item = $group['items'][0]['id'];
+        $url = route('projects.estimate.update', $project);
+        $this->put($url, $this->draft([$this->line($item, ['source_reference' => 'EE!10'])], '10') + [
+            'source_reference' => 'Summary EE!F18',
+            'exchange_rate_source' => 'Summary EE!A4',
+        ])->assertSessionHasNoErrors();
+        $lineId = DB::table('engineering_estimate_lines')->value('id');
+
+        $this->put($url, $this->draft([$this->line($item, ['id' => $lineId, 'local_price_idr' => '25'])], '10'))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('engineering_estimates', [
+            'project_id' => $project, 'revision' => 0,
+            'source_reference' => 'Summary EE!F18', 'exchange_rate_source' => 'Summary EE!A4',
+        ]);
+        $this->assertDatabaseHas('engineering_estimate_lines', [
+            'wbs_item_id' => $item, 'local_price_idr' => '25', 'source_reference' => 'EE!10',
+        ]);
+    }
+
     public function test_estimate_reads_and_writes_are_scoped_to_the_owner(): void
     {
         [$project] = $this->createProject();

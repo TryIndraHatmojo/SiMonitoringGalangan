@@ -110,7 +110,7 @@ class EngineeringEstimate
                 $line[$key] = $line[$key] === null ? null : (string) $line[$key];
             }
             $line['local_price_is_lump_sum'] = (bool) $line['local_price_is_lump_sum'];
-            $rows[] = Arr::except($line, ['engineering_estimate_id']) + array_map(self::displayAmount(...), $amounts);
+            $rows[] = Arr::except($line, ['engineering_estimate_id', 'source_reference', 'source_work_group']) + array_map(self::displayAmount(...), $amounts);
         }
 
         return ['lines' => $rows] + array_map(self::displayAmount(...), $totals);
