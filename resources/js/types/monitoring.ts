@@ -84,7 +84,7 @@ export type Monitoring = {
 };
 export const sections = {
     ringkasan: 'Ringkasan',
-    estimasi: 'Estimasi',
+    estimasi: 'Engineering Estimate',
     wbs: 'Struktur Pekerjaan dan Pengukuran Progres',
     builder: 'Form Builder',
     input: 'Input Progres',

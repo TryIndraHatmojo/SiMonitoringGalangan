@@ -124,7 +124,7 @@ export function WbsEditor({
                                 <p>
                                     {key === 'items'
                                         ? hasEstimate
-                                            ? 'Saat baseline terbit, bobot item dihitung dari biaya pada Estimasi.'
+                                            ? 'Saat baseline terbit, bobot item dihitung dari biaya pada Engineering Estimate.'
                                             : 'Bobot item terhadap seluruh proyek.'
                                         : 'Semua item dalam kelompok memakai tahap ini.'}
                                 </p>
