@@ -1,5 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
+    Calculator,
     ChartNoAxesCombined,
     Layers,
     ListChecks,
@@ -23,6 +24,7 @@ export function AppSidebar() {
     const { name, project, section, period } = usePage<Monitoring>().props;
     const links = [
         ['ringkasan', ChartNoAxesCombined],
+        ['estimasi', Calculator],
         ['wbs', Layers],
         ['builder', PanelsTopLeft],
         ['input', ListChecks],

@@ -1,5 +1,6 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { useId, useState } from 'react';
+import { EstimateEditor } from '@/components/estimate-editor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { History } from '@/components/progress-history';
@@ -7,6 +8,7 @@ import { WbsEditor } from '@/components/wbs-editor';
 import { workspace } from '@/routes';
 import { store, period as createPeriod, edit, update } from '@/routes/projects';
 import {
+    money,
     percent,
     sections,
     type Monitoring,
@@ -307,7 +309,7 @@ export default function Dashboard(props: Monitoring) {
                         </span>
                     )}
                 </header>
-                {Object.keys(errors).length > 0 && (
+                {section !== 'estimasi' && Object.keys(errors).length > 0 && (
                     <div
                         role="alert"
                         className="rounded border border-destructive/30 bg-destructive/10 p-3 text-destructive-foreground"
@@ -321,12 +323,21 @@ export default function Dashboard(props: Monitoring) {
                 )}
                 {create ? (
                     <ProjectForm projects={projects} />
+                ) : section === 'estimasi' ? (
+                    <EstimateEditor
+                        key={project.id}
+                        project={project.id}
+                        estimate={props.estimate}
+                        groups={props.draft}
+                        period={period?.id}
+                    />
                 ) : section === 'builder' ? (
                     <WbsEditor
                         key={project.id}
                         project={project.id}
                         draft={props.draft}
                         revision={revision}
+                        hasEstimate={props.hasEstimate}
                     />
                 ) : (
                     <>
@@ -427,8 +438,10 @@ export default function Dashboard(props: Monitoring) {
                                             percent(period?.deviation, ' pp'),
                                         ],
                                         [
-                                            'Engineering Estimate',
-                                            'Belum ada data',
+                                            'Engineering Estimate (BAC)',
+                                            props.bac == null
+                                                ? 'Belum ada data'
+                                                : money(props.bac),
                                         ],
                                     ].map(([label, value]) => (
                                         <section key={label}>

@@ -3,8 +3,8 @@
 namespace Database\Seeders;
 
 use App\Models\User;
+use App\Support\EngineeringEstimate;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
@@ -20,27 +20,43 @@ class AsdHarbourTugDemoSeeder extends Seeder
 
         $fixture = json_decode(File::get(__DIR__.'/asd-harbour-tug.json'), true, flags: JSON_THROW_ON_ERROR);
         $project = $fixture['project'];
+        $estimate = json_decode(File::get(__DIR__.'/asd-engineering-estimate.json'), true, flags: JSON_THROW_ON_ERROR);
+        $workRow = fn (array $row): array => ['id' => $row['id'], 'name' => $row['name'], 'weight' => $row['weight']];
+        $groups = array_map(fn (array $group): array => [
+            'id' => $group['id'],
+            'name' => $group['name'],
+            'items' => array_map($workRow, array_values($group['items'])),
+            'stages' => array_map($workRow, array_values($group['stages'])),
+        ], array_values($fixture['groups']));
+        $estimateLines = [];
+        foreach ($estimate['lines'] as $line) {
+            $estimateLines[] = $line + ['position' => count($estimateLines) + 1];
+        }
+        $published = EngineeringEstimate::baseline($groups, $estimateLines, $estimate['settings']['exchange_rate_idr_per_usd']);
+        if ($published['bac'] !== EngineeringEstimate::formatAmount($fixture['engineering_estimate']['amount_idr'])) {
+            throw new RuntimeException('BAC Engineering Estimate demo berbeda dengan Summary EE!F18.');
+        }
 
-        DB::transaction(function () use ($ownerEmail, $fixture, $project): void {
+        DB::transaction(function () use ($ownerEmail, $fixture, $project, $estimate, $published): void {
             $owner = User::query()->where('email', $ownerEmail)->lockForUpdate()->first();
             if (! $owner) {
                 throw new RuntimeException('Akun pemilik demo belum terdaftar di Monitoring Galangan.');
             }
 
-            $existing = DB::table('projects')->where('user_id', $owner->id)->where('code', $project['code'])->first();
+            $existing = DB::table('projects')->where('user_id', $owner->id)->where('code', $project['code'])->lockForUpdate()->first();
             if ($existing) {
                 if (! $existing->is_demo) {
                     throw new RuntimeException('Kode ASD-TUG-DEMO sudah dipakai oleh proyek pengguna.');
                 }
 
+                $baseline = DB::table('baselines')->where('project_id', $existing->id)->where('revision', 1)->value('structure');
+                $this->seedMissingEstimate($existing->id, 0, $existing->draft, $estimate);
+                $this->seedMissingEstimate($existing->id, 1, $baseline, $estimate, $published['bac']);
+
                 return;
             }
 
-            $structure = json_encode(array_map(fn (array $group): array => [
-                ...Arr::only($group, ['id', 'name']),
-                'items' => array_map(fn (array $item): array => Arr::only($item, ['id', 'name', 'weight']), $group['items']),
-                'stages' => array_map(fn (array $stage): array => Arr::only($stage, ['id', 'name', 'weight']), $group['stages']),
-            ], $fixture['groups']), JSON_THROW_ON_ERROR);
+            $structure = json_encode($published['groups'], JSON_THROW_ON_ERROR);
 
             $projectId = DB::table('projects')->insertGetId([
                 ...$project,
@@ -54,6 +70,9 @@ class AsdHarbourTugDemoSeeder extends Seeder
                 'revision' => 1,
                 'structure' => $structure,
             ]);
+
+            EngineeringEstimate::store($projectId, 0, $estimate['settings'], $estimate['lines']);
+            EngineeringEstimate::store($projectId, 1, $estimate['settings'], $estimate['lines'], $published['bac']);
 
             $importedAt = now();
             foreach ($fixture['weeks'] as $week) {
@@ -73,6 +92,19 @@ class AsdHarbourTugDemoSeeder extends Seeder
                 }
             }
         }, attempts: 3);
+    }
+
+    /** @param array{settings: array<string, mixed>, lines: list<array<string, mixed>>} $estimate */
+    private function seedMissingEstimate(int $project, int $revision, ?string $structure, array $estimate, ?string $bac = null): void
+    {
+        if ($structure === null || EngineeringEstimate::find($project, $revision)) {
+            return;
+        }
+
+        $itemIds = EngineeringEstimate::itemIds(json_decode($structure, true, flags: JSON_THROW_ON_ERROR));
+        if (array_diff(array_column($estimate['lines'], 'wbs_item_id'), array_keys($itemIds)) === []) {
+            EngineeringEstimate::store($project, $revision, $estimate['settings'], $estimate['lines'], $bac);
+        }
     }
 
     /**

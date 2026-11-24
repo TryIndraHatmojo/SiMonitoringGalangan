@@ -26,6 +26,18 @@ class AsdHarbourTugDemoSeederTest extends TestCase
         $this->assertDatabaseCount('baselines', 1);
         $this->assertDatabaseCount('report_periods', 16);
         $this->assertDatabaseCount('measurements', 2550);
+        $this->assertDatabaseCount('engineering_estimates', 2);
+        $this->assertDatabaseCount('engineering_estimate_lines', 620);
+        $snapshot = DB::table('engineering_estimates')->where('revision', 1)->sole();
+        $this->assertDatabaseHas('engineering_estimates', ['id' => $snapshot->id, 'bac_idr' => '60023612409.10', 'exchange_rate_is_assumption' => true]);
+        $this->assertDatabaseHas('engineering_estimate_lines', [
+            'engineering_estimate_id' => $snapshot->id, 'source_reference' => 'EE!253',
+            'local_price_idr' => '328000000', 'quantity' => '4000', 'local_price_is_lump_sum' => true,
+        ]);
+        $this->assertDatabaseHas('engineering_estimate_lines', [
+            'engineering_estimate_id' => $snapshot->id, 'source_reference' => 'EE!417',
+            'quantity' => null, 'local_price_idr' => null,
+        ]);
         $this->assertDatabaseHas('projects', ['id' => $project->id, 'user_id' => $owner->id, 'code' => 'ASD-TUG-DEMO']);
 
         $groups = collect(json_decode(DB::table('baselines')->value('structure'), true, flags: JSON_THROW_ON_ERROR));
@@ -48,6 +60,7 @@ class AsdHarbourTugDemoSeederTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('project.is_demo', true)
                 ->where('period.id', $weekFourteen->id)
+                ->where('bac', '60023612409.10')
                 ->where('period.is_simulated', true)
                 ->where('period.target', fn ($value) => (float) $value === 98.50)
                 ->where('report.actual', fn (float $value) => round($value, 2) === 79.83)
@@ -57,6 +70,15 @@ class AsdHarbourTugDemoSeederTest extends TestCase
                 ->where('history.12.actual', 78.96)
                 ->where('history.14.actual', null)
                 ->where('history.15.actual', null));
+
+        $this->get(route('workspace', ['section' => 'estimasi', 'project' => $project->id]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('estimate.lines', 310)
+                ->where('estimate.local_idr', '20090438720.00')
+                ->where('estimate.import_usd', '3039516.95')
+                ->where('estimate.equivalent_idr', '60023612409.10')
+                ->where('estimate.exchange_rate_idr_per_usd', '13138')
+                ->where('estimate.exchange_rate_is_assumption', true));
 
         $this->get(route('dashboard', ['project' => $project->id, 'period' => $periods[12]->id]))
             ->assertInertia(fn (Assert $page) => $page

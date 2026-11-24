@@ -25,10 +25,12 @@ export function WbsEditor({
     project,
     draft,
     revision,
+    hasEstimate,
 }: {
     project: number;
     draft: Group[];
     revision: number;
+    hasEstimate: boolean;
 }) {
     const [groups, setGroups] = useState(draft);
     const [index, select] = useState(0);
@@ -44,6 +46,7 @@ export function WbsEditor({
             {
                 preserveScroll: true,
                 onStart: () => setBusy(true),
+                onSuccess: (page) => setGroups(page.props.draft as Group[]),
                 onFinish: () => setBusy(false),
             },
         );
@@ -120,7 +123,9 @@ export function WbsEditor({
                                 </h2>
                                 <p>
                                     {key === 'items'
-                                        ? 'Bobot item terhadap seluruh proyek.'
+                                        ? hasEstimate
+                                            ? 'Saat baseline terbit, bobot item dihitung dari biaya pada Estimasi.'
+                                            : 'Bobot item terhadap seluruh proyek.'
                                         : 'Semua item dalam kelompok memakai tahap ini.'}
                                 </p>
                                 {group[key].map((row, i) => {
@@ -162,6 +167,10 @@ export function WbsEditor({
                                                     min="0"
                                                     max="100"
                                                     step="any"
+                                                    readOnly={
+                                                        key === 'items' &&
+                                                        hasEstimate
+                                                    }
                                                     value={row.weight ?? ''}
                                                     placeholder={
                                                         key === 'items'
