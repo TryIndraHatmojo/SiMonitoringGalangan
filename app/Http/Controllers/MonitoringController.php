@@ -26,7 +26,7 @@ class MonitoringController extends Controller
     private function periods(int $project): Builder
     {
         return DB::table('report_periods as p')->join('baselines as b', 'b.id', '=', 'p.baseline_id')
-            ->where('b.project_id', $project)->select('p.*', 'b.revision', 'b.structure', 'b.estimate');
+            ->where('b.project_id', $project)->select('p.*', 'b.revision', 'b.structure', 'b.estimate', 'b.schedule');
     }
 
     public function index(Request $request): Response
@@ -50,6 +50,15 @@ class MonitoringController extends Controller
         $records = DB::table('measurements')->whereIn('period_id', $periods->pluck('id'))->get()->groupBy('period_id');
         $report = ProgressReport::calculate(json_decode($baseline->structure ?? '[]', true), collect());
         $history = [];
+        $prior = $period ? $periods->last(fn ($row) => $row->end < $period->start) : null;
+        $comparison = $request->filled('compare') ? $periods->firstWhere('id', $request->integer('compare')) : $prior;
+        $comparisonReport = null;
+        if ($comparison && $period && $comparison->end < $period->start && $comparison->structure === $period->structure) {
+            $comparisonReport = ProgressReport::calculate(json_decode($comparison->structure, true), $records->get($comparison->id, collect()));
+            if ($comparisonReport['measured'] !== $comparisonReport['expected']) {
+                $comparisonReport = null;
+            }
+        }
         foreach ($periods as $row) {
             $entry = ProgressReport::calculate(json_decode($row->structure, true), $records->get($row->id, collect()));
             if ($entry['actual'] === null && $row->reported_actual !== null) {
@@ -62,14 +71,15 @@ class MonitoringController extends Controller
             $row->is_simulated = (bool) $row->is_simulated;
             $row->partial = $row->reported_actual === null && $entry['measured'] < $entry['expected'];
             $row->deviation = $row->target !== null && $row->actual !== null ? $row->actual - $row->target : null;
-            unset($row->structure);
+            $row->scheduled = $row->schedule !== null;
+            unset($row->structure, $row->schedule);
             $history[] = $row;
             if ($row->id === $period?->id) {
                 $report = $entry;
             }
         }
 
-        return Inertia::render('dashboard', compact('projects', 'project', 'draft', 'period', 'history', 'section', 'report') + ['revision' => $baseline->revision ?? 0]);
+        return Inertia::render('dashboard', compact('comparisonReport', 'comparison', 'projects', 'project', 'draft', 'period', 'history', 'section', 'report') + ['revision' => $baseline->revision ?? 0, 'importPreview' => $request->session()->get('import_preview'), 'importDone' => $request->session()->get('import_done')]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -203,6 +213,67 @@ class MonitoringController extends Controller
         return back();
     }
 
+    public function schedule(Request $request, int $project): RedirectResponse
+    {
+        $data = $request->validate(['revision' => 'required|integer', 'rows' => 'required|array|list|min:1', 'rows.*' => 'array:start,end,target', 'rows.*.start' => 'required|date_format:Y-m-d', 'rows.*.end' => 'required|date_format:Y-m-d', 'rows.*.target' => 'required|numeric|between:0,100|decimal:0,4']);
+        DB::transaction(function () use ($request, $project, $data) {
+            $this->owned($request)->where('id', $project)->lockForUpdate()->firstOrFail();
+            $baseline = DB::table('baselines')->where('project_id', $project)->orderByDesc('revision')->first();
+            if (! $baseline || $baseline->revision != $data['revision']) {
+                throw ValidationException::withMessages(['revision' => 'Muat ulang revisi baseline terbaru.']);
+            }
+            $effective = $data['rows'][0]['start'];
+            $existing = $this->periods($project)->orderBy('p.end')->get();
+            $previous = $existing->last(fn ($p) => $p->end < $effective);
+            $end = $previous->end ?? '';
+            $target = $previous->target ?? 0;
+            foreach ($data['rows'] as $i => $row) {
+                if ($row['start'] <= $end || $row['end'] < $row['start'] || $row['target'] < $target) {
+                    throw ValidationException::withMessages(["rows.$i" => 'Periksa urutan tanggal dan target kumulatif.']);
+                }
+                $end = $row['end'];
+                $target = $row['target'];
+            }
+            $future = $existing->filter(fn ($p) => $p->end >= $effective);
+            if ($future->contains(fn ($p) => $p->start < $effective || $p->closed_at || $p->reported_actual !== null || $p->actual_cost !== null) || DB::table('measurements')->whereIn('period_id', $future->pluck('id'))->exists()) {
+                throw ValidationException::withMessages(['rows' => 'Pilih tanggal efektif setelah periode yang memiliki realisasi.']);
+            }
+            $id = DB::table('baselines')->insertGetId(['project_id' => $project, 'revision' => $baseline->revision + 1, 'structure' => $baseline->structure, 'estimate' => $baseline->estimate, 'schedule' => json_encode($data['rows'], JSON_THROW_ON_ERROR)]);
+            DB::table('report_periods')->whereIn('id', $future->pluck('id'))->delete();
+            foreach ($data['rows'] as $row) {
+                DB::table('report_periods')->insert($row + ['baseline_id' => $id]);
+            }
+        });
+
+        return to_route('workspace', ['section' => 'input', 'project' => $project]);
+    }
+
+    public function correct(Request $request, int $project, int $period): RedirectResponse
+    {
+        $data = $request->validate(['reason' => 'required|string|max:2000', 'item' => 'required_without:actual_cost|uuid', 'values' => 'required_with:item|array', 'actual_cost' => 'sometimes|required|numeric', 'cost_source' => 'required_with:actual_cost|string|max:255']);
+        DB::transaction(function () use ($request, $project, $period, $data) {
+            $this->owned($request)->where('id', $project)->lockForUpdate()->firstOrFail();
+            $record = $this->periods($project)->where('p.id', $period)->whereNotNull('p.closed_at')->firstOrFail();
+            $snapshot = fn () => ['period' => DB::table('report_periods')->find($period), 'values' => DB::table('measurements')->where('period_id', $period)->orderBy('item')->orderBy('stage')->get(['item', 'stage', 'value'])];
+            $before = $snapshot();
+            DB::table('report_periods')->where('id', $period)->update(['closed_at' => null]);
+            $change = Request::create('/', 'PATCH', array_intersect_key($data, array_flip(['item', 'values', 'actual_cost', 'cost_source'])));
+            $change->setUserResolver($request->getUserResolver());
+            $this->update($change, $project, $period);
+            if (isset($data['actual_cost'])) {
+                $change->merge(['verify' => true]);
+                $this->update($change, $project, $period);
+            }
+            $close = Request::create('/', 'PATCH', ['close' => true, 'reason' => $data['reason']]);
+            $close->setUserResolver($request->getUserResolver());
+            $this->update($close, $project, $period);
+            DB::table('report_periods')->where('id', $period)->update(['closed_at' => $record->closed_at]);
+            DB::table('period_corrections')->insert(['period_id' => $period, 'user_id' => $request->user()->id, 'reason' => $data['reason'], 'changes' => json_encode(['before' => $before, 'after' => $snapshot()], JSON_THROW_ON_ERROR), 'created_at' => now()]);
+        });
+
+        return back();
+    }
+
     public function period(Request $request, int $project): RedirectResponse
     {
         $data = $request->validate(['start' => 'required|date_format:Y-m-d', 'end' => 'required|date_format:Y-m-d|after_or_equal:start', 'target' => 'nullable|numeric|between:0,100|decimal:0,4']);
@@ -240,11 +311,22 @@ class MonitoringController extends Controller
                 if ($progress['measured'] < $progress['expected'] || ($report->estimate && ($report->target === null || ! $report->verified_at || $report->cost_simulated))) {
                     throw ValidationException::withMessages(['period' => 'Lengkapi semua tahap serta target dan biaya terverifikasi untuk baseline EE.']);
                 }
-                DB::table('report_periods')->where('id', $period)->update(['closed_at' => now()]);
+                $prior = $this->periods($project)->where('p.end', '<', $report->start)->orderByDesc('p.end')->first();
+                $reason = $request->validate(['reason' => 'nullable|string|max:2000'])['reason'] ?? null;
+                if ($prior && $prior->structure === $report->structure) {
+                    $previous = ProgressReport::calculate(json_decode($prior->structure, true), DB::table('measurements')->where('period_id', $prior->id)->get());
+                    if ($progress['actual'] < ($previous['actual'] ?? $prior->reported_actual ?? 0) && ! $reason) {
+                        throw ValidationException::withMessages(['reason' => 'Isi alasan penurunan progres kumulatif.']);
+                    }
+                }
+                DB::table('report_periods')->where('id', $period)->update(['closed_at' => now(), 'closing_reason' => $reason]);
 
                 return;
             }
             if ($request->has('target')) {
+                if ($report->schedule) {
+                    throw ValidationException::withMessages(['target' => 'Gunakan revisi jadwal untuk mengubah target baseline.']);
+                }
                 $target = $request->validate(['target' => 'nullable|numeric|between:0,100|decimal:0,4']);
                 DB::table('report_periods')->where('id', $period)->update($target);
 

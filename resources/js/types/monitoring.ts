@@ -1,6 +1,28 @@
-export type EstimateLine = { code: string; name: string; unit: string; quantity: string; local: string; usd: string; item: string };
-export type Estimate = { rate: string; date: string; source: string; assumption: boolean; lines: EstimateLine[]; bac?: string };
-export const rupiah = (value: number | string | null | undefined) => value == null ? 'Belum tersedia' : Number(value).toLocaleString('id-ID', {style:'currency', currency:'IDR', maximumFractionDigits:2});
+export type EstimateLine = {
+    code: string;
+    name: string;
+    unit: string;
+    quantity: string;
+    local: string;
+    usd: string;
+    item: string;
+};
+export type Estimate = {
+    rate: string;
+    date: string;
+    source: string;
+    assumption: boolean;
+    lines: EstimateLine[];
+    bac?: string;
+};
+export const rupiah = (value: number | string | null | undefined) =>
+    value == null
+        ? 'Belum tersedia'
+        : Number(value).toLocaleString('id-ID', {
+              style: 'currency',
+              currency: 'IDR',
+              maximumFractionDigits: 2,
+          });
 export type Weight = string | number | null;
 export type WorkRow = { id: string; name: string; weight: Weight };
 export type Item = WorkRow & {
@@ -33,6 +55,7 @@ export type Period = {
     target: Weight;
     revision: number;
     closed_at: string | null;
+    scheduled: boolean;
     metrics: Record<string, number | null>;
     actual_cost: string | null;
     cost_source: string | null;
@@ -45,6 +68,10 @@ export type Period = {
     deviation: number | null;
 };
 export type Monitoring = {
+    comparison: Period | null;
+    comparisonReport: { groups: Group[] } | null;
+    importPreview: { token: string; counts: Record<string, number> } | null;
+    importDone: boolean | null;
     projects: Pick<Ship, 'name' | 'id'>[];
     project: Ship | null;
     draft: Group[];
