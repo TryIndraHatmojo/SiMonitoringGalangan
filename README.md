@@ -77,6 +77,8 @@ flowchart TD
 
 Backend menghitung progres item dengan menjumlahkan hasil perkalian bobot tahap dan realisasinya. Contohnya, tahap berbobot 60% dengan realisasi 50% menyumbang 30 poin persentase ke progres item. Backend lalu mengalikan progres setiap item dengan bobot item dan menjumlahkan hasilnya untuk memperoleh realisasi proyek. Deviasi dihitung dari realisasi proyek dikurangi target periode. Jika sebagian tahap belum diukur, Ringkasan menandai laporan sebagai **Parsial**.
 
+Rumus lengkap, perlakuan nilai kosong, dan contoh hitung manual tersedia di [dokumentasi rumus monitoring](RUMUS.md).
+
 ### Lokasi kode
 
 | Bagian | Berkas |
