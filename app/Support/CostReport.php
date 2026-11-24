@@ -8,9 +8,15 @@ use Illuminate\Validation\ValidationException;
 
 class CostReport
 {
+    /**
+     * @param  array{rate: string|int|float, lines: list<array<string,mixed>>}  $data
+     * @param  array<int,array{items:list<array{id:string}>}>  $groups
+     * @return array<string,mixed>
+     */
     public static function estimate(array $data, array $groups): array
     {
         $amounts = [];
+        $itemIds = array_column(array_merge(...array_column($groups, 'items')), 'id', 'id');
         $local = BigDecimal::zero();
         $usd = BigDecimal::zero();
         foreach ($data['lines'] as $index => &$line) {
@@ -22,7 +28,7 @@ class CostReport
             $amount = $localLine->plus($usdLine->multipliedBy((string) $data['rate']));
             $line['amount'] = (string) $amount;
             $item = $line['item'];
-            if (! collect($groups)->flatMap(fn ($group) => $group['items'])->contains('id', $item)) {
+            if (! isset($itemIds[$item])) {
                 throw ValidationException::withMessages(["lines.$index.item" => 'Pilih item dalam draft WBS proyek.']);
             }
             $amounts[$item] = ($amounts[$item] ?? BigDecimal::zero())->plus($amount);
@@ -46,6 +52,7 @@ class CostReport
         return $data + ['bac' => (string) $total->toScale(2, RoundingMode::HalfUp), 'local_total' => (string) $local, 'usd_total' => (string) $usd, 'weights' => array_map(fn ($units) => $units / 1000000, $weights)];
     }
 
+    /** @return array<string,float|null> */
     public static function metrics(?float $bac, ?float $target, ?float $actual, ?float $ac): array
     {
         $pv = $bac !== null && $target !== null ? $bac * $target / 100 : null;

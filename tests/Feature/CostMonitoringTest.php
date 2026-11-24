@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Support\CostReport;
+use App\Support\ProgressReport;
 use PHPUnit\Framework\TestCase;
 
 class CostMonitoringTest extends TestCase
@@ -13,6 +14,18 @@ class CostMonitoringTest extends TestCase
         $data = CostReport::estimate(['rate' => '100', 'lines' => [$line, $line, array_replace($line, ['item' => 'b'])]], [['items' => [['id' => 'a'], ['id' => 'b']]]]);
         $this->assertSame('24.00', $data['bac']);
         $this->assertSame(['a' => 66.666667, 'b' => 33.333333], $data['weights']);
+    }
+
+    public function test_comparability_follows_item_identity_and_weights(): void
+    {
+        $group = ['id' => 'g', 'items' => [['id' => 'a', 'weight' => 60], ['id' => 'b', 'weight' => 40]], 'stages' => [['id' => 's', 'weight' => 100]]];
+        $basis = fn (array $g): array => ProgressReport::basis(json_encode([$g], JSON_THROW_ON_ERROR));
+        $before = $basis($group);
+        $group['items'] = array_reverse($group['items']);
+        $group['items'][0]['name'] = 'Nama baru';
+        $this->assertEquals($before, $basis($group));
+        $group['items'][0]['weight'] = 35;
+        $this->assertNotEquals($before, $basis($group));
     }
 
     public function test_zero_and_missing_cost_preserve_independent_metrics(): void

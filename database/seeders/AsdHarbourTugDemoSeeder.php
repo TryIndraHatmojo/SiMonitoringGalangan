@@ -29,12 +29,8 @@ class AsdHarbourTugDemoSeeder extends Seeder
             }
 
             $existing = DB::table('projects')->where('user_id', $owner->id)->where('code', $project['code'])->first();
-            if ($existing) {
-                if (! $existing->is_demo) {
-                    throw new RuntimeException('Kode ASD-TUG-DEMO sudah dipakai oleh proyek pengguna.');
-                }
-
-                return;
+            if ($existing && ! $existing->is_demo) {
+                throw new RuntimeException('Kode ASD-TUG-DEMO sudah dipakai oleh proyek pengguna.');
             }
 
             $structure = json_encode(array_map(fn (array $group): array => [
@@ -45,6 +41,24 @@ class AsdHarbourTugDemoSeeder extends Seeder
 
             $costData = json_decode(File::get(__DIR__.'/asd-costs.json'), true, flags: JSON_THROW_ON_ERROR);
             $estimate = json_encode(CostReport::estimate($costData['estimate'], $fixture['groups']), JSON_THROW_ON_ERROR);
+            if ($existing) {
+                $baseline = DB::table('baselines')->where('project_id', $existing->id)->where('revision', 1)->lockForUpdate()->first();
+                if (! $baseline || $baseline->estimate !== null || json_decode($baseline->structure, true) != json_decode($structure, true)) {
+                    return;
+                }
+                DB::table('baselines')->where('id', $baseline->id)->update(['estimate' => $estimate]);
+                if ($existing->estimate === null && json_decode($existing->draft, true) == json_decode($structure, true)) {
+                    DB::table('projects')->where('id', $existing->id)->update(['estimate' => $estimate]);
+                }
+                foreach ($fixture['weeks'] as $week) {
+                    if ($week['actual_percent'] === null) {
+                        continue;
+                    }
+                    DB::table('report_periods')->where('baseline_id', $baseline->id)->where('start', $week['start'])->where('end', $week['end'])->whereNull('actual_cost')->whereNotNull('closed_at')->update(['actual_cost' => $costData['costs'][$week['week'] - 1], 'cost_simulated' => true, 'cost_source' => 'EVM · EV / asumsi CPI']);
+                }
+
+                return;
+            }
             $projectId = DB::table('projects')->insertGetId([
                 ...$project,
                 'yard' => $project['yard'] ?? 'Belum tercatat',

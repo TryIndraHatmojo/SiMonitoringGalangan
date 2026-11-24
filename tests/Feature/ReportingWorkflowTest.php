@@ -7,6 +7,8 @@ use App\Support\MonitoringWorkbook;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 use Tests\TestCase;
 use ZipArchive;
 
@@ -20,6 +22,24 @@ class ReportingWorkflowTest extends TestCase
         $this->post(route('projects.store'), ['code' => 'T', 'name' => 'Tug', 'yard' => 'Galangan', 'start' => '2026-01-01', 'end' => '2026-12-31'])->assertSessionHasNoErrors();
 
         return DB::table('projects')->value('id');
+    }
+
+    public function test_custom_item_stages_use_the_published_revision_and_validate_the_measurement(): void
+    {
+        $project = $this->project();
+        $stage = ['id' => (string) Str::uuid(), 'name' => 'Fabrikasi', 'weight' => 100];
+        $inspection = ['id' => (string) Str::uuid(), 'name' => 'Inspeksi', 'weight' => 100];
+        $item = ['id' => (string) Str::uuid(), 'name' => 'Uji', 'weight' => 100, 'stages' => [$inspection]];
+        $group = ['id' => (string) Str::uuid(), 'name' => 'Mesin', 'items' => [$item], 'stages' => [$stage]];
+        $this->put(route('projects.structure', $project), ['groups' => [$group], 'publish' => true])->assertSessionHasNoErrors();
+        $this->post(route('projects.period', $project), ['start' => '2026-01-01', 'end' => '2026-01-07'])->assertSessionHasNoErrors();
+        $period = DB::table('report_periods')->value('id');
+        $url = route('projects.update', [$project, $period]);
+        $this->patch($url, ['item' => $item['id'], 'values' => [$stage['id'] => 50]])->assertNotFound();
+        $this->patch($url, ['item' => $item['id'], 'values' => [$inspection['id'] => 50]])->assertSessionHasNoErrors();
+        $this->get(route('dashboard', ['project' => $project, 'period' => $period]))->assertInertia(fn (AssertableInertia $page) => $page->where('report.actual', 50)->where('report.expected', 1));
+        $group['items'][0]['stages'][0]['weight'] = 99;
+        $this->put(route('projects.structure', $project), ['groups' => [$group], 'publish' => true])->assertSessionHasErrors('groups');
     }
 
     private function workbook(): UploadedFile
@@ -63,6 +83,8 @@ class ReportingWorkflowTest extends TestCase
         $cost = ['actual_cost' => '0', 'cost_source' => 'Buku Januari'];
         $this->patch($url, $cost)->assertSessionHasNoErrors();
         $this->patch($url, $cost + ['verify' => true])->assertSessionHasNoErrors();
+        $this->patch($url, $cost)->assertSessionHasNoErrors();
+        $this->assertNotNull(DB::table('report_periods')->where('id', $period)->value('verified_at'));
         $this->patch($url, ['close' => true])->assertSessionHasNoErrors();
         $this->post(route('projects.correct', [$project, $period]), ['actual_cost' => '100', 'cost_source' => 'Revisi Januari', 'reason' => 'Penyesuaian buku'])->assertSessionHasNoErrors();
         $this->assertDatabaseHas('period_corrections', ['period_id' => $period, 'reason' => 'Penyesuaian buku']);
@@ -73,6 +95,6 @@ class ReportingWorkflowTest extends TestCase
         $this->put(route('projects.schedule', $project), ['revision' => 1, 'rows' => [['start' => '2026-01-08', 'end' => '2026-01-14', 'target' => 65]]])->assertSessionHasNoErrors();
         $this->post($apply, ['token' => $token])->assertSessionHasErrors('file');
         $this->actingAs(User::factory()->create());
-        $this->post($preview,['file' => $upload])->assertNotFound();
+        $this->post($preview, ['file' => $upload])->assertNotFound();
     }
 }

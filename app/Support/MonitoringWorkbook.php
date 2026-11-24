@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use SimpleXMLElement;
 use ZipArchive;
@@ -13,7 +14,7 @@ class MonitoringWorkbook
         'Grup' => ['code', 'name'],
         'Item' => ['group', 'code', 'name', 'weight'],
         'Tahap' => ['group', 'code', 'name', 'weight'],
-        'EE' => ['code', 'name', 'unit', 'quantity', 'local', 'usd', 'item'],
+        'EE' => ['code', 'name', 'unit', 'quantity', 'local', 'usd', 'item', 'source_group'],
         'Jadwal' => ['start', 'end', 'target'],
         'Histori' => ['end', 'item', 'stage', 'value', 'reported_actual', 'simulated'],
     ];
@@ -45,6 +46,45 @@ class MonitoringWorkbook
         $zip->close();
     }
 
+    /** @param array<string,array<int,array<string,string>>> $sheets */
+    private static function validateRows(array $sheets): void
+    {
+        $text = 'required|string|max:255';
+        $number = 'required|numeric|min:0|decimal:0,6';
+        $percent = 'required|numeric|between:0,100|decimal:0,6';
+        $date = 'required|date_format:Y-m-d';
+        $rules = [
+            'Kurs' => ['rate' => 'required|numeric|gt:0|decimal:0,6', 'date' => $date, 'source' => $text, 'assumption' => 'required|in:0,1'],
+            'Grup' => ['code' => $text, 'name' => $text],
+            'Item' => ['group' => $text, 'code' => $text, 'name' => $text, 'weight' => $sheets['EE'] ? 'nullable|numeric|between:0,100|decimal:0,6' : $percent],
+            'Tahap' => ['group' => $text, 'code' => $text, 'name' => $text, 'weight' => $percent],
+            'EE' => ['code' => 'required|string|max:100', 'name' => $text, 'unit' => 'required|string|max:40', 'quantity' => 'required|numeric|gt:0|decimal:0,6', 'local' => $number, 'usd' => $number, 'item' => $text, 'source_group' => 'nullable|string|max:255'],
+            'Jadwal' => ['start' => $date, 'end' => $date.'|after_or_equal:start', 'target' => 'required|numeric|between:0,100|decimal:0,4'],
+            'Histori' => ['end' => $date, 'simulated' => 'required|in:0,1', 'reported_actual' => 'nullable|numeric|between:0,100|decimal:0,4', 'value' => 'required_without:reported_actual|nullable|numeric|between:0,100|decimal:0,4'],
+        ];
+        $errors = [];
+        foreach ($sheets as $name => $rows) {
+            $seen = [];
+            foreach ($rows as $n => $row) {
+                $messages = Validator::make($row, $rules[$name])->errors()->toArray();
+                if (isset($row['code'])) {
+                    if (isset($seen[$row['code']])) {
+                        $messages['code'] = ['Kode sumber sudah dipakai pada baris '.$seen[$row['code']].'.'];
+                    }
+                    $seen[$row['code']] = $n;
+                }
+                foreach ($messages as $key => $messagesForField) {
+                    $cell = $name.'!'.chr(65 + array_search($key, self::SHEETS[$name], true)).$n;
+                    $errors[$cell] = $messagesForField;
+                }
+            }
+        }
+        if ($errors) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    /** @return array<string,array<int,array<string,string>>> */
     public static function read(string $path): array
     {
         $zip = new ZipArchive;
@@ -76,7 +116,9 @@ class MonitoringWorkbook
                 }
             }
             $result = [];
-            foreach ($load('xl/workbook.xml')->sheets->sheet as $sheet) {
+            $book = $load('xl/workbook.xml');
+            $epoch = in_array((string) ($book->workbookPr['date1904'] ?? ''), ['1', 'true'], true) ? '1904-01-01' : '1899-12-30';
+            foreach ($book->sheets->sheet as $sheet) {
                 $name = (string) $sheet['name'];
                 if (! isset(self::SHEETS[$name])) {
                     continue;
@@ -109,7 +151,6 @@ class MonitoringWorkbook
                         if (in_array($name, ['Kurs', 'Jadwal', 'Histori'], true)) {
                             foreach (['date', 'start', 'end'] as $key) {
                                 if (isset($values[$key]) && ctype_digit($values[$key]) && (int) $values[$key] <= 2958465) {
-                                    $epoch = (string) ($load('xl/workbook.xml')->workbookPr['date1904'] ?? '') === '1' ? '1904-01-01' : '1899-12-30';
                                     $values[$key] = (new \DateTimeImmutable($epoch))->modify('+'.$values[$key].' days')->format('Y-m-d');
                                 }
                             }
@@ -124,6 +165,8 @@ class MonitoringWorkbook
             if (array_diff_key(self::SHEETS, $result)) {
                 throw ValidationException::withMessages(['file' => 'Lengkapi seluruh lembar template.']);
             }
+
+            self::validateRows($result);
 
             return $result;
         } finally {

@@ -2,6 +2,7 @@ import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { BaselineCharts } from '@/components/baseline-charts';
 import { Comparison, Planning } from '@/components/report-planning';
 import { correct } from '@/routes/projects';
 import {
@@ -205,7 +206,7 @@ function WorkDetail({
                     onInput={(event) => {
                         const values = new FormData(event.currentTarget);
                         let progress: number | null = null;
-                        for (const stage of group.stages) {
+                        for (const stage of item.stages ?? group.stages) {
                             const raw = values.get(stage.id);
                             if (raw !== null && raw !== '') {
                                 progress =
@@ -229,10 +230,20 @@ function WorkDetail({
                                         reason,
                                         item: item.id,
                                         values: Object.fromEntries(
-                                            group.stages.map((s) => [
-                                                s.id,
-                                                String(entries.get(s.id) ?? ''),
-                                            ]),
+                                            (item.stages ?? group.stages).map(
+                                                (stage) => {
+                                                    const value = entries.get(
+                                                        stage.id,
+                                                    );
+                                                    return [
+                                                        stage.id,
+                                                        typeof value ===
+                                                        'string'
+                                                            ? value
+                                                            : '',
+                                                    ];
+                                                },
+                                            ),
                                         ),
                                     },
                                     preserveScroll: true,
@@ -251,7 +262,7 @@ function WorkDetail({
                             </tr>
                         </thead>
                         <tbody>
-                            {group.stages.map((s) => (
+                            {(item.stages ?? group.stages).map((s) => (
                                 <tr key={s.id}>
                                     <td>{s.name}</td>
                                     <td>{percent(s.weight)}</td>
@@ -306,7 +317,12 @@ export default function Dashboard(props: Monitoring) {
         props;
     const { errors } = usePage().props;
     const [closingReason, setClosingReason] = useState('');
-    const [view, setView] = useState('progres');
+    const [view, setView] = useState(() =>
+        typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('view') === 'biaya'
+            ? 'biaya'
+            : 'progres',
+    );
     const create = section === 'baru' || !project;
     const title = create
         ? 'Buat proyek kapal'
@@ -334,6 +350,42 @@ export default function Dashboard(props: Monitoring) {
                             </Button>
                         </div>
                     )}
+                    {section === 'ringkasan' &&
+                        project &&
+                        !period?.closed_at && (
+                            <Button asChild className="mt-3">
+                                <Link
+                                    href={workspace(
+                                        !revision ? 'builder' : 'input',
+                                        {
+                                            query: {
+                                                project: project.id,
+                                                period: period?.id,
+                                                view:
+                                                    period?.metrics.BAC !=
+                                                        null &&
+                                                    report.expected ===
+                                                        report.measured &&
+                                                    !period.verified_at
+                                                        ? 'biaya'
+                                                        : 'progres',
+                                            },
+                                        },
+                                    )}
+                                >
+                                    {!revision
+                                        ? 'Susun baseline'
+                                        : !period
+                                          ? 'Buat periode'
+                                          : report.expected !== report.measured
+                                            ? 'Lengkapi progres'
+                                            : period.metrics.BAC != null &&
+                                                !period.verified_at
+                                              ? 'Lengkapi biaya'
+                                              : 'Tinjau penutupan'}
+                                </Link>
+                            </Button>
+                        )}
                     {project?.is_demo && !create && (
                         <span className="inline-block rounded-full bg-accent px-3 py-1 text-xs font-medium text-accent-foreground">
                             Data demo ASD Harbour Tug
@@ -507,7 +559,11 @@ export default function Dashboard(props: Monitoring) {
                                         ],
                                         [
                                             'Engineering Estimate',
-                                            rupiah(period?.metrics.BAC),
+                                            rupiah(
+                                                period
+                                                    ? period.metrics.BAC
+                                                    : props.activeEstimate?.bac,
+                                            ),
                                         ],
                                     ].map(([label, value]) => (
                                         <section key={label}>
@@ -518,6 +574,7 @@ export default function Dashboard(props: Monitoring) {
                                         </section>
                                     ))}
                                 </div>
+                                <BaselineCharts data={props} />
                                 <Comparison data={props} />
                                 <History
                                     history={history.map((p) =>

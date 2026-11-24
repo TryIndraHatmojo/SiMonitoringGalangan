@@ -6,6 +6,28 @@ use Illuminate\Support\Collection;
 
 class ProgressReport
 {
+    /** @return array<string,array<string,array<string,int>>> */
+    public static function basis(string $structure): array
+    {
+        $basis = [];
+        foreach (json_decode($structure, true, flags: JSON_THROW_ON_ERROR) as $group) {
+            foreach ($group['items'] as $item) {
+                $weights = ['item' => (int) round($item['weight'] * 1000000)];
+                foreach ($item['stages'] ?? $group['stages'] as $stage) {
+                    $weights[$stage['id']] = (int) round($stage['weight'] * 1000000);
+                }
+                $basis[$group['id']][$item['id']] = $weights;
+            }
+        }
+
+        return $basis;
+    }
+
+    /**
+     * @param  array<int,array<string,mixed>>  $groups
+     * @param  Collection<int,\stdClass>  $measurements
+     * @return array{groups:array<int,array<string,mixed>>,actual:float|int|null,measured:int,expected:int}
+     */
     public static function calculate(array $groups, Collection $measurements): array
     {
         $values = $measurements->groupBy('item')->map(fn ($rows) => $rows->pluck('value', 'stage'));
@@ -18,7 +40,7 @@ class ProgressReport
             foreach ($group['items'] as &$item) {
                 $item['values'] = [];
                 $item['progress'] = null;
-                foreach ($group['stages'] as $stage) {
+                foreach ($item['stages'] ?? $group['stages'] as $stage) {
                     $expected++;
                     $value = $values->get($item['id'])?->get($stage['id']);
                     $item['values'][$stage['id']] = $value;

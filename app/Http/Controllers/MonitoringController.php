@@ -38,7 +38,7 @@ class MonitoringController extends Controller
             $project->is_demo = (bool) $project->is_demo;
         }
         if ($project) {
-            $project->estimate = json_decode($project->estimate ?? 'null', true);
+            $project->estimate = $section === 'estimasi' ? json_decode($project->estimate ?? 'null', true) : null;
         }
         $draft = $project ? json_decode($project->draft, true) : [];
         $periods = $this->periods($project->id ?? 0)->orderBy('p.end')->get();
@@ -48,12 +48,16 @@ class MonitoringController extends Controller
         abort_if($request->filled('period') && ! $period, 404);
         $baseline = DB::table('baselines')->where('project_id', $project->id ?? 0)->orderByDesc('revision')->first();
         $records = DB::table('measurements')->whereIn('period_id', $periods->pluck('id'))->get()->groupBy('period_id');
+        $activeEstimate = json_decode($period->estimate ?? $baseline->estimate ?? 'null', true);
+        if ($period && $period->estimate === null) {
+            $activeEstimate = null;
+        }
         $report = ProgressReport::calculate(json_decode($baseline->structure ?? '[]', true), collect());
         $history = [];
         $prior = $period ? $periods->last(fn ($row) => $row->end < $period->start) : null;
         $comparison = $request->filled('compare') ? $periods->firstWhere('id', $request->integer('compare')) : $prior;
         $comparisonReport = null;
-        if ($comparison && $period && $comparison->end < $period->start && $comparison->structure === $period->structure) {
+        if ($comparison && $period && $comparison->end < $period->start && ProgressReport::basis($comparison->structure) == ProgressReport::basis($period->structure)) {
             $comparisonReport = ProgressReport::calculate(json_decode($comparison->structure, true), $records->get($comparison->id, collect()));
             if ($comparisonReport['measured'] !== $comparisonReport['expected']) {
                 $comparisonReport = null;
@@ -69,7 +73,7 @@ class MonitoringController extends Controller
             $row->metrics = CostReport::metrics($estimate ? (float) $estimate['bac'] : null, $row->target === null ? null : (float) $row->target, $row->actual, $row->actual_cost === null ? null : (float) $row->actual_cost);
             unset($row->estimate);
             $row->is_simulated = (bool) $row->is_simulated;
-            $row->partial = $row->reported_actual === null && $entry['measured'] < $entry['expected'];
+            $row->partial = ($row->reported_actual === null || $entry['measured'] > 0) && $entry['measured'] < $entry['expected'];
             $row->deviation = $row->target !== null && $row->actual !== null ? $row->actual - $row->target : null;
             $row->scheduled = $row->schedule !== null;
             unset($row->structure, $row->schedule);
@@ -79,7 +83,7 @@ class MonitoringController extends Controller
             }
         }
 
-        return Inertia::render('dashboard', compact('comparisonReport', 'comparison', 'projects', 'project', 'draft', 'period', 'history', 'section', 'report') + ['revision' => $baseline->revision ?? 0, 'importPreview' => $request->session()->get('import_preview'), 'importDone' => $request->session()->get('import_done')]);
+        return Inertia::render('dashboard', compact('activeEstimate', 'comparisonReport', 'comparison', 'projects', 'project', 'draft', 'period', 'history', 'section', 'report') + ['revision' => $baseline->revision ?? 0, 'importPreview' => $request->session()->get('import_preview'), 'importDone' => $request->session()->get('import_done')]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -145,7 +149,7 @@ class MonitoringController extends Controller
             $record = $this->owned($request)->where('id', $project)->lockForUpdate()->firstOrFail();
             $data = $request->validate([
                 'rate' => 'required|numeric|gt:0|decimal:0,6', 'date' => 'required|date_format:Y-m-d', 'source' => 'required|string|max:255', 'assumption' => 'required|boolean',
-                'lines' => 'required|array|list|min:1', 'lines.*' => 'array:code,name,unit,quantity,local,usd,item',
+                'lines' => 'required|array|list|min:1', 'lines.*' => 'array:code,name,unit,quantity,local,usd,item,source_group', 'lines.*.source_group' => 'nullable|string|max:255',
                 'lines.*.code' => 'required|string|distinct|max:100', 'lines.*.name' => 'required|string|max:255', 'lines.*.unit' => 'required|string|max:40',
                 'lines.*.quantity' => 'required|numeric|gt:0|decimal:0,6', 'lines.*.local' => 'required|numeric|min:0|decimal:0,6', 'lines.*.usd' => 'required|numeric|min:0|decimal:0,6', 'lines.*.item' => 'required|uuid',
             ]);
@@ -168,11 +172,16 @@ class MonitoringController extends Controller
             $path = "groups.*.$key";
             $rules += [$path => $list, "$path.*" => 'array:id,name,weight', "$path.*.id" => 'required|uuid|distinct:ignore_case', "$path.*.name" => $name, "$path.*.weight" => $weight];
         }
-        $groups = $request->validate($rules)['groups'];
+        $rules['groups.*.items.*'] = 'array:id,name,weight,stages,template_name';
+        $rules += ['groups.*.items.*.template_name' => 'sometimes|string|max:255', 'groups.*.items.*.stages' => 'sometimes|array|list|min:1', 'groups.*.items.*.stages.*' => 'array:id,name,weight', 'groups.*.items.*.stages.*.id' => 'required|uuid', 'groups.*.items.*.stages.*.name' => $name, 'groups.*.items.*.stages.*.weight' => $weight];
         $estimate = $this->owned($request)->where('id', $project)->value('estimate');
+        if ($estimate) {
+            $rules['groups.*.items.*.weight'] = 'nullable|numeric|between:0,100';
+        }
+        $groups = $request->validate($rules)['groups'];
         if ($publish && $estimate) {
             $weights = json_decode($estimate, true)['weights'];
-            $itemIds = collect($groups)->flatMap(fn ($group) => array_column($group['items'], 'id'))->all();
+            $itemIds = array_column(array_merge(...array_column($groups, 'items')), 'id');
             if (array_diff(array_keys($weights), $itemIds)) {
                 throw ValidationException::withMessages(['groups' => 'Perbarui pemetaan EE untuk item yang dihapus.']);
             }
@@ -190,6 +199,11 @@ class MonitoringController extends Controller
             foreach ($groups as $group) {
                 if ($units($group['stages']) !== 100000000) {
                     throw ValidationException::withMessages(['groups' => 'Total bobot tahap '.$group['name'].' harus 100%.']);
+                }
+                foreach ($group['items'] as $item) {
+                    if (isset($item['stages']) && ($units($item['stages']) !== 100000000 || count(array_unique(array_column($item['stages'], 'id'))) !== count($item['stages']))) {
+                        throw ValidationException::withMessages(['groups' => 'Tahap item harus unik dan berbobot total 100%.']);
+                    }
                 }
                 $total += $units($group['items']);
             }
@@ -301,6 +315,16 @@ class MonitoringController extends Controller
             if ($request->has('actual_cost')) {
                 $cost = $request->validate(['actual_cost' => 'nullable|numeric|min:0|max:9999999999999999|decimal:0,2', 'cost_source' => 'nullable|required_with:actual_cost|string|max:255', 'verify' => 'sometimes|boolean']);
                 $same = $report->actual_cost !== null && $cost['actual_cost'] !== null && BigDecimal::of((string) $report->actual_cost)->isEqualTo((string) $cost['actual_cost']) && $report->cost_source === ($cost['cost_source'] ?? null);
+                if ($same && ($report->verified_at || $report->cost_simulated)) {
+                    if ($report->cost_simulated && $request->boolean('verify')) {
+                        throw ValidationException::withMessages(['cost_source' => 'Gunakan referensi pembukuan riil untuk verifikasi.']);
+                    }
+
+                    return;
+                }
+                if ($report->cost_simulated && $cost['actual_cost'] !== null && $report->cost_source === ($cost['cost_source'] ?? null)) {
+                    throw ValidationException::withMessages(['cost_source' => 'Isi referensi pembukuan riil ketika mengganti biaya simulasi.']);
+                }
                 $verified = $same && $request->boolean('verify');
                 DB::table('report_periods')->where('id', $period)->update(['actual_cost' => $cost['actual_cost'], 'cost_source' => $cost['cost_source'] ?? null, 'cost_simulated' => false, 'verified_at' => $verified ? now() : null, 'verified_by' => $verified ? $request->user()->id : null]);
 
@@ -313,7 +337,7 @@ class MonitoringController extends Controller
                 }
                 $prior = $this->periods($project)->where('p.end', '<', $report->start)->orderByDesc('p.end')->first();
                 $reason = $request->validate(['reason' => 'nullable|string|max:2000'])['reason'] ?? null;
-                if ($prior && $prior->structure === $report->structure) {
+                if ($prior && ProgressReport::basis($prior->structure) == ProgressReport::basis($report->structure)) {
                     $previous = ProgressReport::calculate(json_decode($prior->structure, true), DB::table('measurements')->where('period_id', $prior->id)->get());
                     if ($progress['actual'] < ($previous['actual'] ?? $prior->reported_actual ?? 0) && ! $reason) {
                         throw ValidationException::withMessages(['reason' => 'Isi alasan penurunan progres kumulatif.']);
@@ -333,9 +357,16 @@ class MonitoringController extends Controller
                 return;
             }
             $data = $request->validate(['item' => 'required|uuid', 'values' => 'present|array', 'values.*' => 'nullable|numeric|between:0,100|decimal:0,4']);
-            $groups = collect(json_decode($report->structure, true));
-            $group = $groups->first(fn ($group) => in_array($data['item'], array_column($group['items'], 'id'), true));
-            abort_if(! $group || array_diff(array_keys($data['values']), array_column($group['stages'], 'id')), 404);
+            $allowedStages = [];
+            foreach (json_decode($report->structure, true) as $group) {
+                foreach ($group['items'] as $item) {
+                    if ($item['id'] === $data['item']) {
+                        $allowedStages = array_column($item['stages'] ?? $group['stages'], 'id');
+                        break 2;
+                    }
+                }
+            }
+            abort_if($allowedStages === [] || array_diff(array_keys($data['values']), $allowedStages) !== [], 404);
             foreach ($data['values'] as $stage => $value) {
                 $key = ['period_id' => $period, 'item' => $data['item'], 'stage' => $stage];
                 if ($value === null) {

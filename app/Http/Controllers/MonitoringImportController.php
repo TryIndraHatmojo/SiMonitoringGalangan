@@ -31,13 +31,28 @@ class MonitoringImportController extends Controller
         DB::beginTransaction();
         try {
             $this->applySheets($request, $project, $sheets);
+            $baseline = DB::table('baselines')->where('project_id', $project)->orderByDesc('revision')->firstOrFail();
+            $estimate = json_decode($baseline->estimate ?? 'null', true);
+            $sources = [];
+            foreach (json_decode($baseline->structure, true) as $group) {
+                foreach ($group['items'] as $item) {
+                    $sources[$item['id']] = $group['name'];
+                }
+            }
+            $warnings = [];
+            foreach ($estimate['lines'] ?? [] as $line) {
+                if (! empty($line['source_group']) && strcasecmp($line['source_group'], $sources[$line['item']] ?? '') !== 0) {
+                    $warnings[] = $line['code'].' · '.$line['source_group'].' → '.($sources[$line['item']] ?? '');
+                }
+            }
+            $summary = ['bac' => $estimate['bac'] ?? null, 'warnings' => $warnings];
         } finally {
             DB::rollBack();
         }
         $token = (string) Str::uuid();
         Cache::put("monitoring-import:$token", [$request->user()->id, $project, $revision, $sheets], now()->addMinutes(30));
 
-        return back()->with('import_preview', ['token' => $token, 'counts' => array_map('count', $sheets)]);
+        return back()->with('import_preview', ['token' => $token, 'counts' => array_map('count', $sheets), 'summary' => $summary]);
     }
 
     public function apply(Request $request, int $project): RedirectResponse
@@ -59,7 +74,7 @@ class MonitoringImportController extends Controller
         return back()->with('import_done', true);
     }
 
-    private function owned(Request $request, int $project): object
+    private function owned(Request $request, int $project): \stdClass
     {
         return DB::table('projects')->where('user_id', $request->user()->id)->where('id', $project)->lockForUpdate()->firstOrFail();
     }
@@ -69,6 +84,7 @@ class MonitoringImportController extends Controller
         return (int) DB::table('baselines')->where('project_id', $project)->max('revision');
     }
 
+    /** @param array<string,array<int,array<string,string>>> $sheets */
     private function applySheets(Request $request, int $project, array $sheets): void
     {
         $owner = $this->owned($request, $project);
@@ -134,9 +150,17 @@ class MonitoringImportController extends Controller
             }
             $estimate = array_values($sheets['Kurs'])[0];
             $estimate['lines'] = array_values(array_map(fn ($line) => array_replace($line, ['item' => $id('items', $line['item'])]), $sheets['EE']));
-            $controller->estimate($input($estimate), $project);
-            if ($baseline && json_decode($this->owned($request, $project)->estimate, true) != json_decode($baseline->estimate ?? 'null', true)) {
-                $fail('EE!A2', 'Estimasi berbeda dari baseline.');
+            if ($baseline) {
+                $stored = json_decode($baseline->estimate ?? 'null', true);
+                $same = $stored && collect($estimate)->except('lines')->every(fn ($v, $k) => $stored[$k] == $v)
+                    && count($stored['lines']) === count($estimate['lines']);
+                foreach ($estimate['lines'] as $i => $line) {
+                    if (! $same || array_diff_assoc($line, $stored['lines'][$i])) {
+                        $fail('EE!A'.($i + 2), 'Estimasi berbeda dari baseline.');
+                    }
+                }
+            } else {
+                $controller->estimate($input($estimate), $project);
             }
         }
         if (! $baseline) {
@@ -145,7 +169,14 @@ class MonitoringImportController extends Controller
         }
         $periods = DB::table('report_periods')->join('baselines', 'baseline_id', '=', 'baselines.id')->where('project_id', $project)->select('report_periods.*', 'baselines.structure');
         $byEnd = (clone $periods)->get()->keyBy('end');
+        $end = '';
+        $target = 0;
         foreach ($sheets['Jadwal'] as $n => $r) {
+            if ($r['start'] <= $end || $r['target'] < $target) {
+                $fail("Jadwal!A$n", 'Tanggal atau target kumulatif tidak berurutan.');
+            }
+            $end = $r['end'];
+            $target = $r['target'];
             if (isset($byEnd[$r['end']])) {
                 $p = $byEnd[$r['end']];
                 if ($p->start !== $r['start'] || $p->target === null || ! is_numeric($r['target']) || (float) $p->target !== (float) $r['target']) {
@@ -185,6 +216,18 @@ class MonitoringImportController extends Controller
             } else {
                 $item = $id('items', $r['item']);
                 $stage = $id('stages', $r['stage']);
+                $valid = false;
+                foreach (json_decode($p->structure, true) as $group) {
+                    foreach ($group['items'] as $candidate) {
+                        if ($candidate['id'] === $item && in_array($stage, array_column($candidate['stages'] ?? $group['stages'], 'id'), true)) {
+                            $valid = true;
+                            break 2;
+                        }
+                    }
+                }
+                if (! $valid) {
+                    $fail("Histori!C$n", 'Pasangan item dan tahap tidak ditemukan pada revisi periode.');
+                }
                 $input(['value' => $r['value']])->validate(['value' => 'required|numeric|between:0,100|decimal:0,4']);
                 $old = (clone $records)->where('item', $item)->where('stage', $stage)->value('value');
                 if ($old !== null && (float) $old === (float) $r['value']) {
@@ -196,7 +239,7 @@ class MonitoringImportController extends Controller
                 $controller->update($input(['item' => $item, 'values' => [$stage => $r['value']]]), $project, $p->id);
             }
             $p->is_simulated = $simulated;
-            DB::table('report_periods')->where('id',$p->id)->update(['reported_actual' => $p->reported_actual, 'is_simulated' => $simulated]);
+            DB::table('report_periods')->where('id', $p->id)->update(['reported_actual' => $p->reported_actual, 'is_simulated' => $simulated]);
         }
     }
 }

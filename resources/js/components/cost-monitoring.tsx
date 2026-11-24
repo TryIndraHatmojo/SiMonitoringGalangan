@@ -13,6 +13,7 @@ import {
 } from '@/types/monitoring';
 
 const emptyLine: EstimateLine = {
+    source_group: '',
     code: '',
     name: '',
     unit: '',
@@ -38,6 +39,39 @@ export function EstimateEditor({
         },
     );
     const [query, search] = useState('');
+    const [page, setPage] = useState(0);
+    const [issuesOnly, setIssuesOnly] = useState(false);
+    const owners = new Map(
+        groups.flatMap((g) =>
+            g.items.map((item) => [item.id, g.name] as const),
+        ),
+    );
+    const codes = new Map<string, number>();
+    for (const line of draft.lines)
+        codes.set(line.code, (codes.get(line.code) ?? 0) + 1);
+    function issue(line: EstimateLine) {
+        if (!owners.has(line.item)) return 'Belum terpetakan';
+        if ((codes.get(line.code) ?? 0) > 1)
+            return 'Kode sumber terhitung ganda';
+        if (
+            line.source_group &&
+            line.source_group.trim().toLowerCase() !==
+                owners.get(line.item)?.trim().toLowerCase()
+        )
+            return 'Label grup sumber berbeda';
+        return '';
+    }
+    const matching = draft.lines
+        .map((line, i) => ({ line, i }))
+        .filter(
+            ({ line }) =>
+                (line.code + ' ' + line.name)
+                    .toLowerCase()
+                    .includes(query.toLowerCase()) &&
+                (!issuesOnly || !!issue(line)),
+        );
+    const pages = Math.max(1, Math.ceil(matching.length / 10));
+    const currentPage = Math.min(page, pages - 1);
     const [errors, setErrors] = useState<Record<string, string>>({});
     function edit(index: number, patch: Partial<EstimateLine>) {
         setDraft({
@@ -106,84 +140,119 @@ export function EstimateEditor({
             </p>
             <label>
                 Cari kode atau uraian
-                <Input value={query} onChange={(e) => search(e.target.value)} />
+                <Input
+                    value={query}
+                    onChange={(e) => {
+                        search(e.target.value);
+                        setPage(0);
+                    }}
+                />
             </label>
-            {draft.lines.map(
-                (line, i) =>
-                    (line.code + ' ' + line.name)
-                        .toLowerCase()
-                        .includes(query.toLowerCase()) && (
-                        <fieldset
-                            key={i}
-                            className="my-3 grid gap-2 rounded-lg border p-3 sm:grid-cols-4"
-                        >
-                            <legend>Baris {i + 1}</legend>
-                            {(
-                                [
-                                    ['code', 'Kode sumber'],
-                                    ['name', 'Uraian'],
-                                    ['unit', 'Satuan'],
-                                    ['quantity', 'Volume'],
-                                    ['local', 'Harga satuan IDR'],
-                                    ['usd', 'Harga satuan USD'],
-                                ] as const
-                            ).map(([key, label]) => (
-                                <label key={key}>
-                                    {label}
-                                    <Input
-                                        value={line[key]}
-                                        onChange={(e) =>
-                                            edit(i, { [key]: e.target.value })
-                                        }
-                                    />
-                                    {errors['lines.' + i + '.' + key]}
-                                </label>
-                            ))}
-                            <label>
-                                Item WBS
-                                <select
-                                    value={line.item}
+            <label>
+                <input
+                    type="checkbox"
+                    checked={issuesOnly}
+                    onChange={(e) => {
+                        setIssuesOnly(e.target.checked);
+                        setPage(0);
+                    }}
+                />
+                Tampilkan masalah pemetaan
+            </label>
+            <div className="my-3 flex items-center gap-3">
+                <Button
+                    variant="outline"
+                    disabled={currentPage === 0}
+                    onClick={() => setPage(currentPage - 1)}
+                >
+                    Sebelumnya
+                </Button>
+                <span>
+                    {currentPage + 1} / {pages} · {matching.length} baris
+                </span>
+                <Button
+                    variant="outline"
+                    disabled={currentPage + 1 >= pages}
+                    onClick={() => setPage(currentPage + 1)}
+                >
+                    Berikutnya
+                </Button>
+            </div>
+            {matching
+                .slice(currentPage * 10, currentPage * 10 + 10)
+                .map(({ line, i }) => (
+                    <fieldset
+                        key={i}
+                        className="my-3 grid gap-2 rounded-lg border p-3 sm:grid-cols-4"
+                    >
+                        <legend>
+                            Baris {i + 1} {issue(line)}
+                        </legend>
+                        {(
+                            [
+                                ['code', 'Kode sumber'],
+                                ['name', 'Uraian'],
+                                ['unit', 'Satuan'],
+                                ['source_group', 'Label grup sumber'],
+                                ['quantity', 'Volume'],
+                                ['local', 'Harga satuan IDR'],
+                                ['usd', 'Harga satuan USD'],
+                            ] as const
+                        ).map(([key, label]) => (
+                            <label key={key}>
+                                {label}
+                                <Input
+                                    value={line[key]}
                                     onChange={(e) =>
-                                        edit(i, { item: e.target.value })
+                                        edit(i, { [key]: e.target.value })
                                     }
-                                >
-                                    <option value="">Pilih item</option>
-                                    {groups.map((g) => (
-                                        <optgroup key={g.id} label={g.name}>
-                                            {g.items.map((it) => (
-                                                <option
-                                                    key={it.id}
-                                                    value={it.id}
-                                                >
-                                                    {it.name}
-                                                </option>
-                                            ))}
-                                        </optgroup>
-                                    ))}
-                                </select>
-                                {errors['lines.' + i + '.item']}
+                                />
+                                {errors['lines.' + i + '.' + key]}
                             </label>
-                            <Button
-                                variant="outline"
-                                onClick={() =>
-                                    setDraft({
-                                        ...draft,
-                                        lines: draft.lines.filter(
-                                            (_, n) => n !== i,
-                                        ),
-                                    })
+                        ))}
+                        <label>
+                            Item WBS
+                            <select
+                                value={line.item}
+                                onChange={(e) =>
+                                    edit(i, { item: e.target.value })
                                 }
                             >
-                                Hapus baris
-                            </Button>
-                        </fieldset>
-                    ),
-            )}
+                                <option value="">Pilih item</option>
+                                {groups.map((g) => (
+                                    <optgroup key={g.id} label={g.name}>
+                                        {g.items.map((it) => (
+                                            <option key={it.id} value={it.id}>
+                                                {it.name}
+                                            </option>
+                                        ))}
+                                    </optgroup>
+                                ))}
+                            </select>
+                            {errors['lines.' + i + '.item']}
+                        </label>
+                        <Button
+                            variant="outline"
+                            onClick={() =>
+                                setDraft({
+                                    ...draft,
+                                    lines: draft.lines.filter(
+                                        (_, n) => n !== i,
+                                    ),
+                                })
+                            }
+                        >
+                            Hapus baris
+                        </Button>
+                    </fieldset>
+                ))}
             <div className="mt-4 flex gap-2">
                 <Button
                     variant="outline"
                     onClick={() => {
                         search('');
+                        setIssuesOnly(false);
+                        setPage(Math.floor(draft.lines.length / 10));
                         setDraft({
                             ...draft,
                             lines: [...draft.lines, { ...emptyLine }],
@@ -205,7 +274,7 @@ export function EstimateEditor({
                                     Object.fromEntries(
                                         Object.keys(emptyLine).map((k) => [
                                             k,
-                                            l[k as keyof EstimateLine],
+                                            l[k as keyof EstimateLine] ?? '',
                                         ]),
                                     ),
                                 ),
@@ -353,7 +422,15 @@ export function CostSummary({
                 ))}
             </div>
             <h3>Kurva S biaya</h3>
-            <p>PV rencana · EV nilai hasil · AC biaya aktual</p>
+            <div className="flex flex-wrap gap-4 text-sm">
+                <span>┄ PV rencana</span>
+                <span>━ EV nilai hasil</span>
+                <span>⋯ AC biaya aktual</span>
+            </div>
+            <p>
+                Skala {rupiah(0)} – {rupiah(max)} · {rows[0]?.end} sampai{' '}
+                {rows.at(-1)?.end}
+            </p>
             <svg
                 viewBox="0 0 640 160"
                 role="img"
@@ -391,7 +468,9 @@ export function CostSummary({
                                                     strokeDasharray={
                                                         k === 0
                                                             ? '5 3'
-                                                            : undefined
+                                                            : k === 2
+                                                              ? '2 3'
+                                                              : undefined
                                                     }
                                                 />
                                             )}

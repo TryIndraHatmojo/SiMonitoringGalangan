@@ -1,4 +1,5 @@
 export type EstimateLine = {
+    source_group?: string;
     code: string;
     name: string;
     unit: string;
@@ -26,6 +27,8 @@ export const rupiah = (value: number | string | null | undefined) =>
 export type Weight = string | number | null;
 export type WorkRow = { id: string; name: string; weight: Weight };
 export type Item = WorkRow & {
+    stages?: WorkRow[];
+    template_name?: string;
     values?: Record<string, Weight>;
     progress?: number | null;
     contribution?: number | null;
@@ -68,9 +71,14 @@ export type Period = {
     deviation: number | null;
 };
 export type Monitoring = {
+    activeEstimate: Estimate | null;
     comparison: Period | null;
     comparisonReport: { groups: Group[] } | null;
-    importPreview: { token: string; counts: Record<string, number> } | null;
+    importPreview: {
+        token: string;
+        summary: { bac: string | null; warnings: string[] };
+        counts: Record<string, number>;
+    } | null;
     importDone: boolean | null;
     projects: Pick<Ship, 'name' | 'id'>[];
     project: Ship | null;

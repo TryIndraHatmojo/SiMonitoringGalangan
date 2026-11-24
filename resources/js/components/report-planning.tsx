@@ -9,7 +9,7 @@ import {
     schedule,
 } from '@/routes/projects';
 import { workspace } from '@/routes';
-import { percent, type Monitoring } from '@/types/monitoring';
+import { rupiah, percent, type Monitoring } from '@/types/monitoring';
 
 export function Planning({ data }: { data: Monitoring }) {
     const blank = { start: '', end: '', target: '' };
@@ -137,6 +137,10 @@ export function Planning({ data }: { data: Monitoring }) {
                 {data.importPreview && (
                     <Form {...applyImport.form(project)}>
                         <h3>Hasil rekonsiliasi</h3>
+                        <p>BAC {rupiah(data.importPreview.summary.bac)}</p>
+                        {data.importPreview.summary.warnings.map((w) => (
+                            <p key={w}>Perbedaan grup · {w}</p>
+                        ))}
                         <p>
                             {Object.entries(data.importPreview.counts)
                                 .map(([k, n]) => k + ' ' + n)
@@ -186,14 +190,19 @@ export function Comparison({ data }: { data: Monitoring }) {
                     ))}
                 </select>
             </label>
-            {!comparisonReport || period.partial ? (
+            {!comparisonReport || report.measured !== report.expected ? (
                 <p>
                     Perbandingan memerlukan detail lengkap dengan struktur dan
                     bobot yang sepadan.
                 </p>
             ) : (
-                report.groups.map((g, i) => {
-                    const old = comparisonReport.groups[i];
+                report.groups.map((g) => {
+                    const old = comparisonReport.groups.find(
+                        (group) => group.id === g.id,
+                    )!;
+                    const oldItems = new Map(
+                        old.items.map((item) => [item.id, item]),
+                    );
                     return (
                         <details key={g.id}>
                             <summary>
@@ -218,7 +227,7 @@ export function Comparison({ data }: { data: Monitoring }) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {g.items.map((item, j) => (
+                                    {g.items.map((item) => (
                                         <tr key={item.id}>
                                             <td>{item.name}</td>
                                             <td>
@@ -229,7 +238,8 @@ export function Comparison({ data }: { data: Monitoring }) {
                                             </td>
                                             <td>
                                                 {percent(
-                                                    old.items[j].contribution,
+                                                    oldItems.get(item.id)
+                                                        ?.contribution,
                                                     ' pp',
                                                 )}
                                             </td>
@@ -237,8 +247,9 @@ export function Comparison({ data }: { data: Monitoring }) {
                                                 {percent(
                                                     Number(item.contribution) -
                                                         Number(
-                                                            old.items[j]
-                                                                .contribution,
+                                                            oldItems.get(
+                                                                item.id,
+                                                            )?.contribution,
                                                         ),
                                                     ' pp',
                                                 )}
