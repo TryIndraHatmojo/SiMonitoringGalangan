@@ -70,6 +70,7 @@ export type Monitoring = {
     draft: Group[];
     estimate: EstimateDraft | null;
     hasEstimate: boolean;
+    canImportFormBuilder: boolean;
     bac: string | null;
     revision: number;
     section: string;

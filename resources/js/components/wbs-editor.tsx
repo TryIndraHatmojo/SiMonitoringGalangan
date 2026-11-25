@@ -1,5 +1,6 @@
 import { router } from '@inertiajs/react';
 import { useState } from 'react';
+import { FormBuilderImport } from '@/components/form-builder-import';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formBuilderTemplate, structure } from '@/routes/projects';
@@ -26,11 +27,13 @@ export function WbsEditor({
     draft,
     revision,
     hasEstimate,
+    canImportFormBuilder,
 }: {
     project: number;
     draft: Group[];
     revision: number;
     hasEstimate: boolean;
+    canImportFormBuilder: boolean;
 }) {
     const [groups, setGroups] = useState(draft);
     const [index, select] = useState(0);
@@ -55,12 +58,27 @@ export function WbsEditor({
         rows.reduce((n, row) => n + Number(row.weight), 0);
     return (
         <>
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button asChild variant="outline">
                     <a href={formBuilderTemplate.url()} download>
                         Unduh Template Excel
                     </a>
                 </Button>
+                <FormBuilderImport
+                    project={project}
+                    disabled={
+                        !canImportFormBuilder || groups.length > 0 || busy
+                    }
+                    onImported={(importedGroups) => {
+                        setGroups(importedGroups);
+                        select(0);
+                    }}
+                />
+                {(!canImportFormBuilder || groups.length > 0) && (
+                    <p className="basis-full text-right text-sm text-muted-foreground">
+                        Impor tersedia saat draft Form Builder dan EE kosong.
+                    </p>
+                )}
             </div>
             <div className="grid items-start gap-4 lg:grid-cols-[15rem_1fr]">
                 <section>

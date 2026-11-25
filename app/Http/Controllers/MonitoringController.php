@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Support\EngineeringEstimate;
+use App\Support\FormBuilderImport;
 use App\Support\ProgressReport;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -15,6 +17,7 @@ use Illuminate\Validation\Rules\Unique;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use stdClass;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class MonitoringController extends Controller
@@ -68,6 +71,7 @@ class MonitoringController extends Controller
         $estimate = null;
         $bac = null;
         $hasEstimate = false;
+        $canImportFormBuilder = false;
         if ($project && in_array($section, ['estimasi', 'builder'], true)) {
             $estimateDraft = EngineeringEstimate::find($project->id, 0);
             if ($section === 'estimasi' && $estimateDraft) {
@@ -77,8 +81,9 @@ class MonitoringController extends Controller
                     $settings['exchange_rate_idr_per_usd'],
                 );
             }
-            if ($section === 'builder' && $estimateDraft) {
-                $hasEstimate = DB::table('engineering_estimate_lines')->where('engineering_estimate_id', $estimateDraft->id)->exists();
+            if ($section === 'builder') {
+                $hasEstimate = $this->hasEstimateLines($estimateDraft);
+                $canImportFormBuilder = FormBuilderImport::draftIsEmpty($draft, $estimateDraft, $hasEstimate);
             }
         }
         if ($project && $section === 'ringkasan' && ($reportRevision = $period->revision ?? $baseline->revision ?? null)) {
@@ -88,7 +93,7 @@ class MonitoringController extends Controller
             }
         }
 
-        return Inertia::render('dashboard', compact('projects', 'project', 'draft', 'period', 'history', 'section', 'report', 'estimate', 'bac', 'hasEstimate') + ['revision' => $baseline->revision ?? 0]);
+        return Inertia::render('dashboard', compact('projects', 'project', 'draft', 'period', 'history', 'section', 'report', 'estimate', 'bac', 'hasEstimate', 'canImportFormBuilder') + ['revision' => $baseline->revision ?? 0]);
     }
 
     public function downloadFormBuilderTemplate(): BinaryFileResponse
@@ -96,6 +101,69 @@ class MonitoringController extends Controller
         return response()->download(resource_path('form-builder-template.xlsx'), 'Template-Form-Builder.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
+    }
+
+    public function previewFormBuilderImport(Request $request, int $project, FormBuilderImport $import): JsonResponse
+    {
+        $this->ensureFormBuilderImportAvailable($this->owned($request)->where('id', $project)->firstOrFail());
+        $data = $request->validate(['file' => FormBuilderImport::UPLOAD_RULES], FormBuilderImport::UPLOAD_MESSAGES);
+        $file = $data['file'];
+        ['groups' => $groups, 'settings' => $settings, 'lines' => $lines] = $import->prepare($file);
+        $totals = EngineeringEstimate::preview($lines, $settings['exchange_rate_idr_per_usd']);
+
+        return response()->json([
+            'preview_token' => $import->token($file, (int) $request->user()->id, $project),
+            'groups' => array_map(fn (array $group): array => [
+                'name' => $group['name'],
+                'item_count' => count($group['items']),
+            ], $groups),
+            'item_count' => count($lines),
+            'exchange_rate_idr_per_usd' => $settings['exchange_rate_idr_per_usd'],
+            'exchange_rate_date' => $settings['exchange_rate_date'],
+            'exchange_rate_is_assumption' => $settings['exchange_rate_is_assumption'],
+            'local_idr' => $totals['local_idr'],
+            'import_usd' => $totals['import_usd'],
+            'equivalent_idr' => $totals['equivalent_idr'],
+        ]);
+    }
+
+    public function applyFormBuilderImport(Request $request, int $project, FormBuilderImport $import): RedirectResponse
+    {
+        $ownedProject = $this->owned($request)->where('id', $project);
+        $this->ensureFormBuilderImportAvailable($ownedProject->firstOrFail());
+        $data = $request->validate([
+            'file' => FormBuilderImport::UPLOAD_RULES,
+            'preview_token' => ['required', 'string', 'max:2048'],
+        ], FormBuilderImport::UPLOAD_MESSAGES + [
+            'preview_token.required' => 'Tinjau file sebelum menerapkan impor.',
+        ]);
+        $file = $data['file'];
+        $import->validateToken($data['preview_token'], $file, (int) $request->user()->id, $project);
+        ['groups' => $groups, 'settings' => $settings, 'lines' => $lines] = $import->prepare($file);
+
+        DB::transaction(function () use ($ownedProject, $project, $groups, $settings, $lines): void {
+            $this->ensureFormBuilderImportAvailable($ownedProject->lockForUpdate()->firstOrFail());
+            $ownedProject->update(['draft' => json_encode($groups, JSON_THROW_ON_ERROR)]);
+            EngineeringEstimate::store($project, 0, $settings, $lines);
+        }, attempts: 3);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Draft Form Builder dan EE berhasil diimpor. Lengkapi tahap pengukuran sebelum menetapkan baseline.']);
+
+        return to_route('workspace', ['section' => 'builder', 'project' => $project]);
+    }
+
+    private function ensureFormBuilderImportAvailable(stdClass $project): void
+    {
+        $estimate = EngineeringEstimate::find($project->id, 0);
+        $groups = json_decode($project->draft, true, flags: JSON_THROW_ON_ERROR);
+        if (! FormBuilderImport::draftIsEmpty($groups, $estimate, $this->hasEstimateLines($estimate))) {
+            throw ValidationException::withMessages(['file' => 'Impor hanya tersedia jika draft Form Builder dan EE proyek masih kosong.']);
+        }
+    }
+
+    private function hasEstimateLines(?stdClass $estimate): bool
+    {
+        return $estimate !== null && DB::table('engineering_estimate_lines')->where('engineering_estimate_id', $estimate->id)->exists();
     }
 
     public function store(Request $request): RedirectResponse

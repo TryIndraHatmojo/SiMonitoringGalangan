@@ -17,6 +17,8 @@ Route::middleware(['auth', 'verified'])->controller(MonitoringController::class)
     Route::patch('projects/{project}', 'updateIdentity')->whereNumber('project')->name('projects.updateIdentity');
     Route::put('projects/{project}/estimate', 'updateEstimate')->whereNumber('project')->name('projects.estimate.update');
     Route::put('projects/{project}/structure', 'structure')->name('projects.structure');
+    Route::post('projects/{project}/form-builder/import/preview', 'previewFormBuilderImport')->whereNumber('project')->name('projects.formBuilderImport.preview');
+    Route::post('projects/{project}/form-builder/import', 'applyFormBuilderImport')->whereNumber('project')->name('projects.formBuilderImport.apply');
     Route::post('projects/{project}/periods', 'period')->name('projects.period');
     Route::patch('projects/{project}/periods/{period}', 'update')->name('projects.update');
 });

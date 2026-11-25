@@ -347,6 +347,7 @@ export default function Dashboard(props: Monitoring) {
                         draft={props.draft}
                         revision={revision}
                         hasEstimate={props.hasEstimate}
+                        canImportFormBuilder={props.canImportFormBuilder}
                     />
                 ) : (
                     <>
