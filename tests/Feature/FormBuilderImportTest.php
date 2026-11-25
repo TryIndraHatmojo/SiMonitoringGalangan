@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Tests\TestCase;
 use ZipArchive;
 
@@ -28,6 +29,28 @@ class FormBuilderImportTest extends TestCase
             unlink($path);
         }
         parent::tearDown();
+    }
+
+    public function test_downloaded_example_previews_the_harbour_tug_demo_estimate(): void
+    {
+        $project = $this->createProject();
+        $filename = 'Contoh-Form-Builder-ASD-Harbour-Tug.xlsx';
+
+        $download = $this->get(route('projects.formBuilderExample'))
+            ->assertOk()
+            ->assertDownload($filename)
+            ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertInstanceOf(BinaryFileResponse::class, $download->baseResponse);
+        $file = new UploadedFile($download->baseResponse->getFile()->getPathname(), $filename, test: true);
+
+        $this->preview($project, $file)->assertOk()
+            ->assertJsonCount(9, 'groups')
+            ->assertJsonPath('groups.0', ['name' => 'Design & Approval Drawing', 'item_count' => 4])
+            ->assertJsonPath('item_count', 309)
+            ->assertJsonPath('exchange_rate_idr_per_usd', '13138')
+            ->assertJsonPath('exchange_rate_date', null)
+            ->assertJsonPath('exchange_rate_is_assumption', true)
+            ->assertJsonPath('equivalent_idr', '60023612409.10');
     }
 
     public function test_import_previews_then_saves_linked_wbs_and_estimate_drafts(): void

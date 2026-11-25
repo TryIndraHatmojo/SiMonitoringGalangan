@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
+use PHPUnit\Framework\Attributes\TestWith;
 use Tests\TestCase;
 
 class MonitoringTest extends TestCase
@@ -23,9 +24,11 @@ class MonitoringTest extends TestCase
             ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     }
 
-    public function test_form_builder_template_download_requires_a_verified_account(): void
+    #[TestWith(['projects.formBuilderTemplate'])]
+    #[TestWith(['projects.formBuilderExample'])]
+    public function test_form_builder_download_requires_a_verified_account(string $route): void
     {
-        $url = route('projects.formBuilderTemplate');
+        $url = route($route);
 
         $this->get($url)->assertRedirectToRoute('login');
 

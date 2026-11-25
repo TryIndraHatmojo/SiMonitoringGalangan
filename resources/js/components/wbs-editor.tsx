@@ -3,7 +3,11 @@ import { useState } from 'react';
 import { FormBuilderImport } from '@/components/form-builder-import';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { formBuilderTemplate, structure } from '@/routes/projects';
+import {
+    formBuilderExample,
+    formBuilderTemplate,
+    structure,
+} from '@/routes/projects';
 import type { Group, WorkRow } from '@/types/monitoring';
 import { percent } from '@/types/monitoring';
 
@@ -62,6 +66,11 @@ export function WbsEditor({
                 <Button asChild variant="outline">
                     <a href={formBuilderTemplate.url()} download>
                         Unduh Template Excel
+                    </a>
+                </Button>
+                <Button asChild variant="outline">
+                    <a href={formBuilderExample.url()} download>
+                        Unduh Contoh Terisi
                     </a>
                 </Button>
                 <FormBuilderImport

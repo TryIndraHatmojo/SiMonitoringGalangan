@@ -103,6 +103,13 @@ class MonitoringController extends Controller
         ]);
     }
 
+    public function downloadFormBuilderExample(): BinaryFileResponse
+    {
+        return response()->download(resource_path('form-builder-example.xlsx'), 'Contoh-Form-Builder-ASD-Harbour-Tug.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
     public function previewFormBuilderImport(Request $request, int $project, FormBuilderImport $import): JsonResponse
     {
         $this->ensureFormBuilderImportAvailable($this->owned($request)->where('id', $project)->firstOrFail());

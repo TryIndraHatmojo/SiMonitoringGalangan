@@ -12,6 +12,7 @@ Route::middleware(['auth', 'verified'])->controller(MonitoringController::class)
     Route::get('dashboard', 'index')->name('dashboard');
     Route::get('monitoring/{section}', 'index')->whereIn('section', ['ringkasan', 'estimasi', 'wbs', 'builder', 'input', 'baru'])->name('workspace');
     Route::get('monitoring/templates/form-builder', 'downloadFormBuilderTemplate')->name('projects.formBuilderTemplate');
+    Route::get('monitoring/templates/form-builder/example', 'downloadFormBuilderExample')->name('projects.formBuilderExample');
     Route::post('projects', 'store')->name('projects.store');
     Route::get('projects/{project}/edit', 'edit')->whereNumber('project')->name('projects.edit');
     Route::patch('projects/{project}', 'updateIdentity')->whereNumber('project')->name('projects.updateIdentity');
