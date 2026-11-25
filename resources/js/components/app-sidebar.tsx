@@ -24,9 +24,9 @@ export function AppSidebar() {
     const { name, project, section, period } = usePage<Monitoring>().props;
     const links = [
         ['ringkasan', ChartNoAxesCombined],
+        ['builder', PanelsTopLeft],
         ['estimasi', Calculator],
         ['wbs', Layers],
-        ['builder', PanelsTopLeft],
         ['input', ListChecks],
     ] as const;
     return (
