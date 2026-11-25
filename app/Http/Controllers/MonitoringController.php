@@ -319,7 +319,7 @@ class MonitoringController extends Controller
             'groups.*.id' => 'required|uuid|distinct:ignore_case',
             'groups.*.name' => $name,
             'groups.*.type' => 'nullable|in:standard,construction',
-            'groups.*.ship_weight_tons' => $tonnage,
+            'groups.*.ship_weight_tons' => 'exclude',
             'groups.*.manual_project_weight' => $optionalWeight,
             'groups.*.project_weight' => 'exclude',
             'groups.*.items.*.weight_tons' => $tonnage,
@@ -341,7 +341,7 @@ class MonitoringController extends Controller
         foreach ($groups as &$group) {
             $construction = WorkBreakdown::isConstruction($group);
             if (! $construction) {
-                unset($group['ship_weight_tons'], $group['manual_project_weight']);
+                unset($group['manual_project_weight']);
             }
             foreach ($group['items'] as &$item) {
                 if ($construction) {

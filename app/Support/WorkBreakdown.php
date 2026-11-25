@@ -9,7 +9,7 @@ use Illuminate\Validation\ValidationException;
 /**
  * @phpstan-type Weight int|float|numeric-string|null
  * @phpstan-type WorkRow array{id: string, name: ?string, weight?: Weight, weight_tons?: Weight, group_weight?: Weight}
- * @phpstan-type WorkGroup array{id: string, name: ?string, items: list<WorkRow>, stages: list<WorkRow>, type?: ?string, ship_weight_tons?: Weight, manual_project_weight?: Weight, project_weight?: Weight}
+ * @phpstan-type WorkGroup array{id: string, name: ?string, items: list<WorkRow>, stages: list<WorkRow>, type?: ?string, manual_project_weight?: Weight, project_weight?: Weight}
  */
 class WorkBreakdown
 {
@@ -87,11 +87,6 @@ class WorkBreakdown
                 continue;
             }
 
-            $name = $group['name'];
-            $shipWeight = BigDecimal::of((string) ($group['ship_weight_tons'] ?? 0));
-            if (! $shipWeight->isPositive()) {
-                throw ValidationException::withMessages(['groups' => 'Isi estimasi berat kapal lebih dari nol untuk '.$name.'.']);
-            }
             $tons = [];
             $blockTotal = BigDecimal::zero();
             foreach ($group['items'] as $block) {
@@ -102,14 +97,10 @@ class WorkBreakdown
                 $tons[] = $blockWeight;
                 $blockTotal = $blockTotal->plus($blockWeight);
             }
-            if (! $blockTotal->isEqualTo($shipWeight)) {
-                throw ValidationException::withMessages(['groups' => 'Total berat blok '.$name.' harus sama dengan estimasi berat kapal.']);
-            }
-
             $projectUnits = self::units($group[$useManualWeights ? 'manual_project_weight' : 'project_weight'] ?? null);
             $group['project_weight'] = self::percent($projectUnits);
-            $groupUnits = self::allocate($tons, $shipWeight, self::FULL_WEIGHT);
-            $blockProjectUnits = self::allocate($tons, $shipWeight, $projectUnits);
+            $groupUnits = self::allocate($tons, $blockTotal, self::FULL_WEIGHT);
+            $blockProjectUnits = self::allocate($tons, $blockTotal, $projectUnits);
             foreach ($group['items'] as $index => &$block) {
                 $block['group_weight'] = self::percent($groupUnits[$index]);
                 $block['weight'] = self::percent($blockProjectUnits[$index]);

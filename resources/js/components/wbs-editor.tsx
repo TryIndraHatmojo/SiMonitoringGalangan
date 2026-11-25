@@ -86,7 +86,6 @@ export function WbsEditor({
     const [busy, setBusy] = useState(false);
     const group = groups[index];
     const construction = group?.type === 'construction';
-    const shipWeight = amount(group?.ship_weight_tons);
     const totalBlockWeight = construction
         ? group.items.reduce(
               (sum, block) => sum + (amount(block.weight_tons) ?? 0),
@@ -104,7 +103,6 @@ export function WbsEditor({
                 name: workGroup.name,
                 type: workGroup.type,
                 ...(isConstruction && {
-                    ship_weight_tons: workGroup.ship_weight_tons,
                     manual_project_weight: requestWeight(
                         workGroup.manual_project_weight,
                     ),
@@ -175,7 +173,6 @@ export function WbsEditor({
         construction &&
         savedConstruction?.project_weight != null &&
         amount(savedConstruction.project_weight) === selectedGroupWeight &&
-        amount(savedConstruction.ship_weight_tons) === shipWeight &&
         savedConstruction.items.length === group.items.length &&
         savedConstruction.items.every(
             (block, i) =>
@@ -300,15 +297,10 @@ export function WbsEditor({
                         </Button>
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                             {construction && (
-                                <label>
-                                    Estimasi berat kapal (ton)
-                                    <DecimalInput
-                                        value={group.ship_weight_tons}
-                                        onChange={(ship_weight_tons) =>
-                                            change({ ship_weight_tons })
-                                        }
-                                    />
-                                </label>
+                                <p>
+                                    Total berat kapal{' '}
+                                    <strong>{tonnage(totalBlockWeight)}</strong>
+                                </p>
                             )}
                             {construction && !hasEstimate ? (
                                 <label>
@@ -359,28 +351,27 @@ export function WbsEditor({
                                             : 'Item pekerjaan'
                                         : 'Tahap pengukuran'}
                                 </h2>
-                                <p>
-                                    {key === 'items'
-                                        ? construction
-                                            ? 'Total berat blok ' +
-                                              tonnage(totalBlockWeight)
-                                            : hasEstimate
-                                              ? 'Saat baseline terbit, bobot item dihitung dari biaya pada Engineering Estimate.'
-                                              : 'Bobot item terhadap seluruh proyek.'
-                                        : construction
-                                          ? 'Semua blok dalam kelompok memakai tahap ini.'
-                                          : 'Semua item dalam kelompok memakai tahap ini.'}
-                                </p>
+                                {(key === 'stages' || !construction) && (
+                                    <p>
+                                        {key === 'items'
+                                            ? hasEstimate
+                                                ? 'Saat baseline terbit, bobot item dihitung dari biaya pada Engineering Estimate.'
+                                                : 'Bobot item terhadap seluruh proyek.'
+                                            : construction
+                                              ? 'Semua blok dalam kelompok memakai tahap ini.'
+                                              : 'Semua item dalam kelompok memakai tahap ini.'}
+                                    </p>
+                                )}
                                 {group[key].map((row: Item, i) => {
                                     const blockWeight = amount(row.weight_tons);
                                     const projectWeight = itemWeight(row);
                                     const inGroup = showPublishedWeights
                                         ? amount(row.group_weight)
                                         : construction
-                                          ? shipWeight &&
-                                            shipWeight > 0 &&
+                                          ? totalBlockWeight > 0 &&
                                             blockWeight !== null
-                                              ? (100 * blockWeight) / shipWeight
+                                              ? (100 * blockWeight) /
+                                                totalBlockWeight
                                               : null
                                           : selectedGroupWeight &&
                                               projectWeight !== null

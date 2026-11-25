@@ -18,7 +18,7 @@ class ConstructionWbsTest extends TestCase
     public function test_construction_uses_group_cost_and_block_tonnage_and_snapshots_progress_weights(): void
     {
         $project = $this->createProject();
-        $construction = $this->construction(['39.72', '1284.28'], '1324');
+        $construction = $this->construction(['39.72', '1284.28']);
         $standard = $this->standard();
         $groups = [$construction, $standard];
         $this->saveStructure($project, $groups)->assertSessionHasNoErrors();
@@ -47,7 +47,11 @@ class ConstructionWbsTest extends TestCase
             $this->cost('1710', $groupCost),
             $this->cost('8290', $standardCost),
         ])->assertSessionHasNoErrors();
+        $groups[0]['items'][1]['weight_tons'] = '622.28';
+        $groups[0]['ship_weight_tons'] = '1324';
         $this->saveStructure($project, $groups, publish: true)->assertSessionHasNoErrors();
+        $latest = json_decode(DB::table('baselines')->where('revision', 2)->value('structure'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertArrayNotHasKey('ship_weight_tons', $latest[0]);
         $this->post(route('projects.period', $project), ['start' => '2026-10-08', 'end' => '2026-10-14'])
             ->assertSessionHasNoErrors();
 
@@ -55,7 +59,8 @@ class ConstructionWbsTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('period.revision', 2)
                 ->where('report.groups.0.weight', 17.1)
-                ->where('report.groups.0.items.0.weight', 0.513));
+                ->where('report.groups.0.items.0.group_weight', 6)
+                ->where('report.groups.0.items.0.weight', 1.026));
         $this->get(route('dashboard', ['project' => $project, 'period' => $firstPeriod]))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('period.revision', 1)
@@ -73,7 +78,7 @@ class ConstructionWbsTest extends TestCase
     public function test_manual_construction_weights_round_to_the_group_and_project_totals(): void
     {
         $project = $this->createProject();
-        $construction = $this->construction(['1', '1', '1'], '3') + ['manual_project_weight' => 10, 'project_weight' => 50];
+        $construction = $this->construction(['1', '1', '1']) + ['manual_project_weight' => 10, 'project_weight' => 50];
         $construction['items'][0] += ['group_weight' => 90, 'weight' => 90];
 
         $this->saveStructure($project, [$construction, $this->standard(90)], publish: true)
@@ -86,20 +91,18 @@ class ConstructionWbsTest extends TestCase
         $this->assertSame(90, $stored[1]['items'][0]['weight']);
     }
 
-    #[TestWith([null, '1', 10, 90, 'Isi estimasi berat kapal lebih dari nol untuk Konstruksi.'])]
-    #[TestWith(['1', '0', 10, 90, 'Isi estimasi berat lebih dari nol untuk blok 101.'])]
-    #[TestWith(['2', '1', 10, 90, 'Total berat blok Konstruksi harus sama dengan estimasi berat kapal.'])]
-    #[TestWith(['1', '1', null, 90, 'Isi bobot proyek kelompok Konstruksi lebih dari 0% untuk menetapkan baseline tanpa EE.'])]
-    #[TestWith(['1', '1', 10, 80, 'Total bobot item dan kelompok Konstruksi seluruh proyek harus 100%.'])]
+    #[TestWith([null, 10, 90, 'Isi estimasi berat lebih dari nol untuk blok 101.'])]
+    #[TestWith(['0', 10, 90, 'Isi estimasi berat lebih dari nol untuk blok 101.'])]
+    #[TestWith(['1', null, 90, 'Isi bobot proyek kelompok Konstruksi lebih dari 0% untuk menetapkan baseline tanpa EE.'])]
+    #[TestWith(['1', 10, 80, 'Total bobot item dan kelompok Konstruksi seluruh proyek harus 100%.'])]
     public function test_invalid_construction_inputs_can_be_saved_as_draft_but_cannot_be_published(
-        ?string $shipTons,
-        string $blockTons,
+        ?string $blockTons,
         ?int $manualWeight,
         int $standardWeight,
         string $error,
     ): void {
         $project = $this->createProject();
-        $groups = [$this->construction([$blockTons], $shipTons) + ['manual_project_weight' => $manualWeight], $this->standard($standardWeight)];
+        $groups = [$this->construction([$blockTons]) + ['manual_project_weight' => $manualWeight], $this->standard($standardWeight)];
 
         $this->saveStructure($project, $groups)->assertSessionHasNoErrors();
         $this->saveStructure($project, $groups, publish: true)->assertSessionHasErrors(['groups' => $error]);
@@ -110,7 +113,7 @@ class ConstructionWbsTest extends TestCase
     public function test_estimate_rejects_block_and_invalid_group_mappings_and_requires_construction_cost(): void
     {
         $project = $this->createProject();
-        $construction = $this->construction(['1'], '1');
+        $construction = $this->construction(['1']);
         $standard = $this->standard();
         $groups = [$construction, $standard];
         $this->saveStructure($project, $groups)->assertSessionHasNoErrors();
@@ -138,7 +141,7 @@ class ConstructionWbsTest extends TestCase
         $this->saveStructure($project, [$group])->assertSessionHasNoErrors();
         $this->saveEstimate($project, [$this->cost('1', ['wbs_item_id' => $group['items'][0]['id']])])
             ->assertSessionHasNoErrors();
-        $group += ['type' => 'construction', 'ship_weight_tons' => '1'];
+        $group += ['type' => 'construction'];
         $group['items'][0]['weight_tons'] = '1';
 
         $this->saveStructure($project, [$group], publish: true)
@@ -162,12 +165,11 @@ class ConstructionWbsTest extends TestCase
         return DB::table('projects')->value('id');
     }
 
-    private function construction(array $blockTons, ?string $shipTons): array
+    private function construction(array $blockTons): array
     {
         $group = $this->standard();
         $group['name'] = 'Konstruksi';
         $group['type'] = 'construction';
-        $group['ship_weight_tons'] = $shipTons;
         $group['items'] = [];
         foreach ($blockTons as $index => $tons) {
             $group['items'][] = ['id' => (string) Str::uuid(), 'name' => (string) (101 + $index), 'weight_tons' => $tons];

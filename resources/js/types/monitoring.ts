@@ -13,7 +13,6 @@ export type Group = {
     items: Item[];
     stages: WorkRow[];
     type?: 'standard' | 'construction' | null;
-    ship_weight_tons?: Weight;
     manual_project_weight?: Weight;
     project_weight?: Weight;
     weight?: number;
