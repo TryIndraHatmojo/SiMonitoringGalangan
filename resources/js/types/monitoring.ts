@@ -1,6 +1,8 @@
 export type Weight = string | number | null;
-export type WorkRow = { id: string; name: string; weight: Weight };
+export type WorkRow = { id: string; name: string; weight?: Weight };
 export type Item = WorkRow & {
+    weight_tons?: Weight;
+    group_weight?: Weight;
     values?: Record<string, Weight>;
     progress?: number | null;
     contribution?: number | null;
@@ -10,7 +12,12 @@ export type Group = {
     name: string;
     items: Item[];
     stages: WorkRow[];
+    type?: 'standard' | 'construction' | null;
+    ship_weight_tons?: Weight;
+    manual_project_weight?: Weight;
+    project_weight?: Weight;
     weight?: number;
+    progress?: number | null;
     contribution?: number | null;
 };
 export type Ship = {
@@ -44,6 +51,7 @@ export type EstimateLineInput = {
     local_price_is_lump_sum: boolean;
     usd_unit_price: string | null;
     wbs_item_id: string | null;
+    wbs_group_id: string | null;
 };
 export type EstimateLine = EstimateLineInput & {
     position: number;
@@ -70,6 +78,7 @@ export type Monitoring = {
     draft: Group[];
     estimate: EstimateDraft | null;
     hasEstimate: boolean;
+    estimateWeights: Record<string, number> | null;
     canImportFormBuilder: boolean;
     bac: string | null;
     revision: number;
@@ -104,11 +113,11 @@ export function money(
     return (currency === 'IDR' ? 'Rp' : 'US$') + formatted + ',' + fraction;
 }
 
-export function percent(value: Weight | undefined, unit = '%') {
+export function percent(value: Weight | undefined, unit = '%', precision = 2) {
     return value == null
         ? 'Belum ada data'
         : Number(value).toLocaleString('id-ID', {
               minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
+              maximumFractionDigits: precision,
           }) + unit;
 }

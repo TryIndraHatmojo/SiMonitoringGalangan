@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Support\EngineeringEstimate;
 use App\Support\FormBuilderImport;
 use App\Support\ProgressReport;
+use App\Support\WorkBreakdown;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
@@ -69,6 +70,7 @@ class MonitoringController extends Controller
         }
 
         $estimate = null;
+        $estimateWeights = null;
         $bac = null;
         $hasEstimate = false;
         $canImportFormBuilder = false;
@@ -82,8 +84,16 @@ class MonitoringController extends Controller
                 );
             }
             if ($section === 'builder') {
-                $hasEstimate = $this->hasEstimateLines($estimateDraft);
+                $lines = $estimateDraft ? EngineeringEstimate::lines($estimateDraft->id) : [];
+                $hasEstimate = $lines !== [];
                 $canImportFormBuilder = FormBuilderImport::draftIsEmpty($draft, $estimateDraft, $hasEstimate);
+                if ($estimateDraft && $hasEstimate) {
+                    try {
+                        $estimateWeights = EngineeringEstimate::costWeights($draft, $lines, EngineeringEstimate::settings($estimateDraft)['exchange_rate_idr_per_usd'])['weights'];
+                    } catch (ValidationException) {
+                        $estimateWeights = null;
+                    }
+                }
             }
         }
         if ($project && $section === 'ringkasan' && ($reportRevision = $period->revision ?? $baseline->revision ?? null)) {
@@ -93,7 +103,7 @@ class MonitoringController extends Controller
             }
         }
 
-        return Inertia::render('dashboard', compact('projects', 'project', 'draft', 'period', 'history', 'section', 'report', 'estimate', 'bac', 'hasEstimate', 'canImportFormBuilder') + ['revision' => $baseline->revision ?? 0]);
+        return Inertia::render('dashboard', compact('projects', 'project', 'draft', 'period', 'history', 'section', 'report', 'estimate', 'estimateWeights', 'bac', 'hasEstimate', 'canImportFormBuilder') + ['revision' => $baseline->revision ?? 0]);
     }
 
     public function downloadFormBuilderTemplate(): BinaryFileResponse
@@ -243,7 +253,7 @@ class MonitoringController extends Controller
                 'exchange_rate_is_assumption' => 'required|boolean',
                 'source_reference' => 'nullable|string|max:255',
                 'lines' => 'present|array|list',
-                'lines.*' => 'array:id,description,quantity,unit,local_price_idr,local_price_is_lump_sum,usd_unit_price,wbs_item_id,source_reference',
+                'lines.*' => 'array:id,description,quantity,unit,local_price_idr,local_price_is_lump_sum,usd_unit_price,wbs_item_id,wbs_group_id,source_reference',
                 'lines.*.id' => 'nullable|integer|distinct',
                 'lines.*.description' => 'required|string|max:255',
                 'lines.*.quantity' => $quantity,
@@ -252,6 +262,7 @@ class MonitoringController extends Controller
                 'lines.*.local_price_is_lump_sum' => 'required|boolean',
                 'lines.*.usd_unit_price' => $price,
                 'lines.*.wbs_item_id' => 'nullable|uuid',
+                'lines.*.wbs_group_id' => 'nullable|uuid',
                 'lines.*.source_reference' => 'nullable|string|max:255',
             ], [
                 'regex' => 'Masukkan angka nonnegatif dengan maksimal enam angka desimal dan tanpa pemisah ribuan.',
@@ -259,7 +270,7 @@ class MonitoringController extends Controller
             ]);
 
             $groups = json_decode($owned->draft, true, flags: JSON_THROW_ON_ERROR);
-            $itemIds = EngineeringEstimate::itemIds($groups);
+            $targets = EngineeringEstimate::mappingTargets($groups);
             $draft = EngineeringEstimate::find($project, 0);
             $original = $draft ? array_column(EngineeringEstimate::lines($draft->id), null, 'id') : [];
             $lines = [];
@@ -269,12 +280,17 @@ class MonitoringController extends Controller
                     throw ValidationException::withMessages(['lines' => 'Draft EE telah berubah. Muat ulang sebelum menyimpan perubahan Anda.']);
                 }
                 $item = isset($line['wbs_item_id']) ? strtolower($line['wbs_item_id']) : null;
-                if ($item !== null && ! isset($itemIds[$item])) {
+                $group = isset($line['wbs_group_id']) ? strtolower($line['wbs_group_id']) : null;
+                if ($group !== null && ($item !== null || ! isset($targets['group:'.$group]))) {
+                    throw ValidationException::withMessages(["lines.$index.wbs_group_id" => 'Pilih satu kelompok Konstruksi dari draft WBS proyek ini.']);
+                }
+                if ($item !== null && ! isset($targets['item:'.$item])) {
                     throw ValidationException::withMessages(["lines.$index.wbs_item_id" => 'Pilih item dari draft WBS proyek ini.']);
                 }
                 $lines[] = [
-                    ...Arr::except($line, ['id', 'wbs_item_id']),
+                    ...Arr::except($line, ['id', 'wbs_item_id', 'wbs_group_id']),
                     'wbs_item_id' => $item,
+                    'wbs_group_id' => $group,
                     'source_work_group' => $original[$id]['source_work_group'] ?? null,
                 ] + ['source_reference' => $original[$id]['source_reference'] ?? null]
                     + array_fill_keys(['quantity', 'unit', 'local_price_idr', 'usd_unit_price'], null);
@@ -295,29 +311,61 @@ class MonitoringController extends Controller
         $list = $publish ? 'required|array|list|min:1' : 'present|array|list';
         $name = ($publish ? 'required' : 'nullable').'|string|max:255';
         $weight = ($publish ? 'required' : 'nullable').'|numeric|between:0,100|decimal:0,6';
-        $rules = ['groups' => $list, 'groups.*' => 'array:id,name,items,stages', 'groups.*.id' => 'required|uuid|distinct:ignore_case', 'groups.*.name' => $name];
+        $optionalWeight = 'nullable|numeric|between:0,100|decimal:0,6';
+        $tonnage = ['nullable', 'regex:/\A\d{1,10}(?:\.\d{1,6})?\z/'];
+        $rules = [
+            'groups' => $list,
+            'groups.*' => 'array:id,name,items,stages,type,ship_weight_tons,manual_project_weight,project_weight',
+            'groups.*.id' => 'required|uuid|distinct:ignore_case',
+            'groups.*.name' => $name,
+            'groups.*.type' => 'nullable|in:standard,construction',
+            'groups.*.ship_weight_tons' => $tonnage,
+            'groups.*.manual_project_weight' => $optionalWeight,
+            'groups.*.project_weight' => 'exclude',
+            'groups.*.items.*.weight_tons' => $tonnage,
+            'groups.*.items.*.group_weight' => 'exclude',
+        ];
         foreach (['items', 'stages'] as $key) {
             $path = "groups.*.$key";
             $rules += [
                 $path => $list,
-                "$path.*" => 'array:id,name,weight',
+                "$path.*" => $key === 'items' ? 'array:id,name,weight,weight_tons,group_weight' : 'array:id,name,weight',
                 "$path.*.id" => 'required|uuid|distinct:ignore_case',
                 "$path.*.name" => $name,
-                "$path.*.weight" => $key === 'items' ? 'nullable|numeric|between:0,100|decimal:0,6' : $weight,
+                "$path.*.weight" => $key === 'items' ? $optionalWeight : $weight,
             ];
         }
-        $groups = $request->validate($rules)['groups'];
+        $groups = $request->validate($rules, [
+            'regex' => 'Isi berat dalam ton dengan maksimal enam angka desimal dan tanpa pemisah ribuan.',
+        ])['groups'];
+        foreach ($groups as &$group) {
+            $construction = WorkBreakdown::isConstruction($group);
+            if (! $construction) {
+                unset($group['ship_weight_tons'], $group['manual_project_weight']);
+            }
+            foreach ($group['items'] as &$item) {
+                if ($construction) {
+                    unset($item['weight']);
+                } else {
+                    unset($item['weight_tons']);
+                }
+            }
+            unset($item);
+        }
+        unset($group);
         DB::transaction(function () use ($request, $project, $groups, $publish): void {
             $this->owned($request)->lockForUpdate()->where('id', $project)->firstOrFail();
             $estimate = $publish ? EngineeringEstimate::find($project, 0) : null;
             $lines = $estimate ? EngineeringEstimate::lines($estimate->id) : [];
             $bac = null;
             if ($publish) {
-                $this->validateBaselineWeights($groups, $lines === []);
+                WorkBreakdown::validateBaseline($groups, $lines === []);
                 if ($estimate && $lines !== []) {
                     $result = EngineeringEstimate::baseline($groups, $lines, EngineeringEstimate::settings($estimate)['exchange_rate_idr_per_usd']);
                     $groups = $result['groups'];
                     $bac = $result['bac'];
+                } else {
+                    $groups = WorkBreakdown::weightConstructionBlocks($groups, useManualWeights: true);
                 }
             }
 
@@ -334,29 +382,6 @@ class MonitoringController extends Controller
         });
 
         return back();
-    }
-
-    /** @param list<array{name: string, items: list<array{weight?: int|float|numeric-string|null}>, stages: list<array{weight: int|float|numeric-string}>}> $groups */
-    private function validateBaselineWeights(array $groups, bool $useManualWeights): void
-    {
-        $units = fn (array $rows): int => array_sum(array_map(fn ($row) => (int) round(($row['weight'] ?? 0) * 1_000_000), $rows));
-        $total = 0;
-        foreach ($groups as $group) {
-            if ($units($group['stages']) !== 100_000_000) {
-                throw ValidationException::withMessages(['groups' => 'Total bobot tahap '.$group['name'].' harus 100%.']);
-            }
-            if ($useManualWeights) {
-                foreach ($group['items'] as $item) {
-                    if (! isset($item['weight'])) {
-                        throw ValidationException::withMessages(['groups' => 'Isi bobot setiap item untuk menetapkan baseline tanpa EE.']);
-                    }
-                }
-                $total += $units($group['items']);
-            }
-        }
-        if ($useManualWeights && $total !== 100_000_000) {
-            throw ValidationException::withMessages(['groups' => 'Total bobot item seluruh proyek harus 100%.']);
-        }
     }
 
     public function period(Request $request, int $project): RedirectResponse
@@ -395,8 +420,8 @@ class MonitoringController extends Controller
                 return;
             }
             $data = $request->validate(['item' => 'required|uuid', 'values' => 'present|array', 'values.*' => 'nullable|numeric|between:0,100|decimal:0,4']);
-            $groups = collect(json_decode($report->structure, true));
-            $group = $groups->first(fn ($group) => in_array($data['item'], array_column($group['items'], 'id'), true));
+            $groups = json_decode($report->structure, true, flags: JSON_THROW_ON_ERROR);
+            $group = array_find($groups, fn (array $group): bool => in_array($data['item'], array_column($group['items'], 'id'), true));
             abort_if(! $group || array_diff(array_keys($data['values']), array_column($group['stages'], 'id')), 404);
             foreach ($data['values'] as $stage => $value) {
                 $key = ['period_id' => $period, 'item' => $data['item'], 'stage' => $stage];

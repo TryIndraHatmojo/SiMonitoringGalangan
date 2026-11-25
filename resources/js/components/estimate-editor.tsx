@@ -42,6 +42,7 @@ function draftInput(estimate: EstimateDraft | null): EstimateInput {
             local_price_is_lump_sum: row.local_price_is_lump_sum,
             usd_unit_price: trimDecimal(row.usd_unit_price),
             wbs_item_id: row.wbs_item_id,
+            wbs_group_id: row.wbs_group_id ?? null,
         })),
     };
 }
@@ -50,6 +51,14 @@ function trimDecimal(value: string | null | undefined) {
     return value?.includes('.')
         ? value.replace(/0+$/, '').replace(/\.$/, '')
         : (value ?? null);
+}
+
+function mappingKey(line: EstimateLineInput) {
+    if (line.wbs_group_id) {
+        return 'group:' + line.wbs_group_id.toLowerCase();
+    }
+
+    return line.wbs_item_id ? 'item:' + line.wbs_item_id.toLowerCase() : '';
 }
 
 export function EstimateEditor({
@@ -76,24 +85,38 @@ export function EstimateEditor({
     const [filter, setFilter] = useState('');
     const [page, setPage] = useState(0);
     const draftById = new Map(estimate?.lines.map((line) => [line.id, line]));
-    const items = new Map(
-        groups.flatMap((group) =>
-            group.items.map(
-                (item) => [item.id.toLowerCase(), { item, group }] as const,
-            ),
-        ),
-    );
+    const targets = new Map<
+        string,
+        { name: string; group: Group; isGroup: boolean }
+    >();
+    for (const group of groups) {
+        if (group.type === 'construction') {
+            targets.set('group:' + group.id.toLowerCase(), {
+                name: group.name || 'Kelompok baru',
+                group,
+                isGroup: true,
+            });
+        } else {
+            for (const item of group.items) {
+                targets.set('item:' + item.id.toLowerCase(), {
+                    name: item.name || 'Item baru',
+                    group,
+                    isGroup: false,
+                });
+            }
+        }
+    }
     const rows = form.data.lines
         .map((line, index) => ({
             line,
             index,
-            mapping: items.get(line.wbs_item_id ?? ''),
+            mapping: targets.get(mappingKey(line)),
             source: draftById.get(line.id),
         }))
         .filter(
             ({ line, mapping }) =>
                 (!filter || mapping?.group.id === filter) &&
-                [line.description, mapping?.item.name].some((value) =>
+                [line.description, mapping?.name].some((value) =>
                     value
                         ?.toLocaleLowerCase('id-ID')
                         .includes(search.trim().toLocaleLowerCase('id-ID')),
@@ -103,6 +126,7 @@ export function EstimateEditor({
     const currentPage = Math.min(page, lastPage);
     const editingIndex = form.data.lines.findIndex(({ id }) => id === editing);
     const editingLine = form.data.lines[editingIndex];
+    const editingTarget = editingLine ? mappingKey(editingLine) : '';
 
     function changeLine(patch: Partial<EstimateLineInput>) {
         form.setData(
@@ -126,6 +150,7 @@ export function EstimateEditor({
                 local_price_is_lump_sum: false,
                 usd_unit_price: null,
                 wbs_item_id: null,
+                wbs_group_id: null,
             },
         ]);
         setEditing(id);
@@ -281,7 +306,7 @@ export function EstimateEditor({
                 </div>
                 {groups.length === 0 && (
                     <p>
-                        Buat item pekerjaan di{' '}
+                        Buat struktur pekerjaan di{' '}
                         <Link
                             className="underline"
                             href={workspace('builder', {
@@ -333,37 +358,52 @@ export function EstimateEditor({
                                 );
                             })}
                             <div className="grid min-w-0 gap-1.5">
-                                <label htmlFor="estimate-wbs-item">
-                                    Item WBS tujuan
+                                <label htmlFor="estimate-wbs-target">
+                                    Tujuan biaya di WBS
                                 </label>
                                 <Combobox
-                                    id="estimate-wbs-item"
-                                    label="Item WBS tujuan"
-                                    value={editingLine.wbs_item_id ?? ''}
-                                    onValueChange={(value) =>
-                                        changeLine({
-                                            wbs_item_id: value || null,
-                                        })
-                                    }
+                                    id="estimate-wbs-target"
+                                    label="Tujuan biaya di WBS"
+                                    value={editingTarget}
+                                    onValueChange={(value) => {
+                                        const target = targets.get(value);
+                                        if (value === '' || target) {
+                                            changeLine({
+                                                wbs_item_id:
+                                                    target && !target.isGroup
+                                                        ? value.slice(
+                                                              'item:'.length,
+                                                          )
+                                                        : null,
+                                                wbs_group_id: target?.isGroup
+                                                    ? value.slice(
+                                                          'group:'.length,
+                                                      )
+                                                    : null,
+                                            });
+                                        }
+                                    }}
                                     options={[
                                         { value: '', label: 'Belum dipetakan' },
-                                        ...(editingLine.wbs_item_id &&
-                                        !items.has(editingLine.wbs_item_id)
+                                        ...(editingTarget &&
+                                        !targets.has(editingTarget)
                                             ? [
                                                   {
-                                                      value: editingLine.wbs_item_id,
-                                                      label: 'Item sudah dihapus',
+                                                      value: editingTarget,
+                                                      label: 'Tujuan perlu dipetakan ulang',
                                                   },
                                               ]
                                             : []),
-                                        ...groups.flatMap((group) =>
-                                            group.items.map((item) => ({
-                                                value: item.id.toLowerCase(),
-                                                label: item.name || 'Item baru',
-                                                group:
-                                                    group.name ||
-                                                    'Kelompok baru',
-                                            })),
+                                        ...Array.from(
+                                            targets,
+                                            ([value, target]) => ({
+                                                value,
+                                                label: target.name,
+                                                group: target.isGroup
+                                                    ? 'Kelompok Konstruksi'
+                                                    : target.group.name ||
+                                                      'Kelompok baru',
+                                            }),
                                         ),
                                     ]}
                                 />
@@ -371,6 +411,9 @@ export function EstimateEditor({
                                     message={
                                         form.errors[
                                             `lines.${editingIndex}.wbs_item_id`
+                                        ] ??
+                                        form.errors[
+                                            `lines.${editingIndex}.wbs_group_id`
                                         ]
                                     }
                                 />
@@ -420,7 +463,7 @@ export function EstimateEditor({
                 )}
                 <div className="my-4 grid gap-3 sm:grid-cols-2">
                     <label>
-                        Cari uraian atau item WBS
+                        Cari uraian atau tujuan WBS
                         <Input
                             type="search"
                             value={search}
@@ -457,7 +500,7 @@ export function EstimateEditor({
                         <thead>
                             <tr>
                                 <th scope="col">Uraian</th>
-                                <th scope="col">Item WBS</th>
+                                <th scope="col">Tujuan WBS</th>
                                 <th scope="col">Ekuivalen tersimpan</th>
                                 <th scope="col">
                                     <span className="sr-only">Aksi</span>
@@ -476,11 +519,15 @@ export function EstimateEditor({
                                             {line.description || 'Uraian baru'}
                                         </td>
                                         <td>
-                                            {mapping?.item.name ||
-                                                'Belum dipetakan'}
+                                            {mapping?.name ??
+                                                (mappingKey(line)
+                                                    ? 'Perlu dipetakan ulang'
+                                                    : 'Belum dipetakan')}
                                             {mapping && (
                                                 <span className="block text-xs text-muted-foreground">
-                                                    {mapping.group.name}
+                                                    {mapping.isGroup
+                                                        ? 'Kelompok Konstruksi'
+                                                        : mapping.group.name}
                                                 </span>
                                             )}
                                         </td>

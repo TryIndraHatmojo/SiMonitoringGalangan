@@ -11,8 +11,7 @@ use LogicException;
 use stdClass;
 
 /**
- * @phpstan-type WorkRow array{id: string, name: ?string, weight?: int|float|numeric-string|null}
- * @phpstan-type WorkGroup array{id: string, name: ?string, items: list<WorkRow>, stages: list<WorkRow>}
+ * @phpstan-import-type WorkGroup from WorkBreakdown
  */
 class EngineeringEstimate
 {
@@ -69,8 +68,8 @@ class EngineeringEstimate
         foreach ($lines as $index => $line) {
             $rows[] = Arr::only($line, [
                 'description', 'quantity', 'unit', 'local_price_idr', 'local_price_is_lump_sum',
-                'usd_unit_price', 'wbs_item_id', 'source_reference', 'source_work_group',
-            ]) + ['position' => $index + 1, 'engineering_estimate_id' => $id];
+                'usd_unit_price', 'wbs_item_id', 'wbs_group_id', 'source_reference', 'source_work_group',
+            ]) + ['wbs_group_id' => null, 'position' => $index + 1, 'engineering_estimate_id' => $id];
         }
         foreach (array_chunk($rows, 75) as $chunk) {
             DB::table('engineering_estimate_lines')->insert($chunk);
@@ -91,6 +90,27 @@ class EngineeringEstimate
         }
 
         return $ids;
+    }
+
+    /**
+     * @param  list<WorkGroup>  $groups
+     * @return array<string, true>
+     */
+    public static function mappingTargets(array $groups): array
+    {
+        $targets = [];
+        foreach ($groups as $group) {
+            if (WorkBreakdown::isConstruction($group)) {
+                $targets['group:'.strtolower($group['id'])] = true;
+
+                continue;
+            }
+            foreach ($group['items'] as $item) {
+                $targets['item:'.strtolower($item['id'])] = true;
+            }
+        }
+
+        return $targets;
     }
 
     /**
@@ -123,7 +143,31 @@ class EngineeringEstimate
      */
     public static function baseline(array $groups, array $lines, ?string $rate): array
     {
-        $itemCosts = array_fill_keys(array_keys(self::itemIds($groups)), BigDecimal::zero());
+        ['weights' => $weights, 'bac' => $bac] = self::costWeights($groups, $lines, $rate);
+        foreach ($groups as &$group) {
+            if (WorkBreakdown::isConstruction($group)) {
+                $group['project_weight'] = $weights['group:'.strtolower($group['id'])];
+
+                continue;
+            }
+            foreach ($group['items'] as &$item) {
+                $item['weight'] = $weights['item:'.strtolower($item['id'])];
+            }
+            unset($item);
+        }
+        unset($group);
+
+        return ['groups' => WorkBreakdown::weightConstructionBlocks($groups, useManualWeights: false), 'bac' => $bac];
+    }
+
+    /**
+     * @param  list<WorkGroup>  $groups
+     * @param  list<array<string, mixed>>  $lines
+     * @return array{weights: array<string, float>, bac: string}
+     */
+    public static function costWeights(array $groups, array $lines, ?string $rate): array
+    {
+        $costs = array_fill_keys(array_keys(self::mappingTargets($groups)), BigDecimal::zero());
         $total = BigDecimal::zero();
         foreach ($lines as $line) {
             $amounts = self::lineAmounts($line, $rate);
@@ -136,10 +180,18 @@ class EngineeringEstimate
             }
             if ($cost->isPositive()) {
                 $item = strtolower($line['wbs_item_id'] ?? '');
-                if (! isset($itemCosts[$item])) {
-                    throw ValidationException::withMessages(['estimate' => 'Petakan baris EE '.$line['position'].' ke item WBS yang masih ada.']);
+                $group = strtolower($line['wbs_group_id'] ?? '');
+                $target = $group === '' ? 'item:'.$item : 'group:'.$group;
+                if ($group !== '' && ($item !== '' || ! isset($costs[$target]))) {
+                    throw ValidationException::withMessages(['estimate' => 'Petakan baris EE '.$line['position'].' ke kelompok Konstruksi yang masih ada.']);
                 }
-                $itemCosts[$item] = $itemCosts[$item]->plus($cost);
+                if (! isset($costs[$target])) {
+                    $targetDescription = array_any($groups, WorkBreakdown::isConstruction(...))
+                        ? 'item Standar atau langsung ke kelompok Konstruksi'
+                        : 'item WBS yang masih ada';
+                    throw ValidationException::withMessages(['estimate' => 'Petakan baris EE '.$line['position'].' ke '.$targetDescription.'.']);
+                }
+                $costs[$target] = $costs[$target]->plus($cost);
                 $total = $total->plus($cost);
             }
         }
@@ -152,38 +204,15 @@ class EngineeringEstimate
             throw ValidationException::withMessages(['estimate' => 'Total EE melebihi kapasitas penyimpanan BAC.']);
         }
 
-        $weightUnits = self::weightUnits($itemCosts, $total);
-        foreach ($groups as &$group) {
-            foreach ($group['items'] as &$item) {
-                $item['weight'] = $weightUnits[strtolower($item['id'])] / 1_000_000;
+        foreach ($groups as $group) {
+            if (WorkBreakdown::isConstruction($group) && $costs['group:'.strtolower($group['id'])]->isZero()) {
+                throw ValidationException::withMessages(['estimate' => 'Petakan biaya EE lebih dari nol langsung ke kelompok '.$group['name'].'.']);
             }
-            unset($item);
-        }
-        unset($group);
-
-        return ['groups' => $groups, 'bac' => (string) $bac];
-    }
-
-    /**
-     * @param  array<string, BigDecimal>  $itemCosts
-     * @return array<string, int>
-     */
-    private static function weightUnits(array $itemCosts, BigDecimal $total): array
-    {
-        $units = [];
-        $remainders = [];
-        foreach ($itemCosts as $item => $cost) {
-            $scaledCost = $cost->multipliedBy(100_000_000);
-            $units[$item] = $scaledCost->dividedBy($total, 0, RoundingMode::Down)->toInt();
-            $remainders[$item] = $scaledCost->minus($total->multipliedBy($units[$item]));
-        }
-        uasort($remainders, fn (BigDecimal $left, BigDecimal $right): int => $right->compareTo($left));
-        $remaining = 100_000_000 - array_sum($units);
-        foreach (array_slice(array_keys($remainders), 0, $remaining) as $item) {
-            $units[$item]++;
         }
 
-        return $units;
+        $units = WorkBreakdown::allocate($costs, $total, WorkBreakdown::FULL_WEIGHT);
+
+        return ['weights' => array_map(WorkBreakdown::percent(...), $units), 'bac' => (string) $bac];
     }
 
     /**

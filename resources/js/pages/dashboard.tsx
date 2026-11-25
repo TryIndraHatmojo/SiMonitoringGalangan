@@ -129,6 +129,8 @@ function WorkDetail({
     } | null>(null);
     const group = groups.find((g) => g.id === gid) ?? groups[0];
     const item = group?.items.find((i) => i.id === iid) ?? group?.items[0];
+    const construction = group?.type === 'construction';
+    const itemLabel = construction ? 'Nama blok' : 'Item pekerjaan';
     const canEdit = editing && period !== null && !period.closed_at;
     if (!group || !item)
         return (
@@ -159,10 +161,10 @@ function WorkDetail({
                         />
                     </div>
                     <div className="grid min-w-0 gap-1.5">
-                        <label htmlFor="work-item">Item pekerjaan</label>
+                        <label htmlFor="work-item">{itemLabel}</label>
                         <Combobox
                             id="work-item"
-                            label="Item pekerjaan"
+                            label={itemLabel}
                             value={item.id}
                             onValueChange={(value) => {
                                 setItem(value);
@@ -179,7 +181,8 @@ function WorkDetail({
             <section>
                 <small>{group.name}</small>
                 <h2>{item.name}</h2>
-                <p>Bobot dalam proyek {percent(item.weight)}</p>
+                <p>Bobot dalam kelompok {percent(item.group_weight, '%', 6)}</p>
+                <p>Bobot dalam proyek {percent(item.weight, '%', 6)}</p>
                 {canEdit && (
                     <p id={realizationHintId}>
                         Isi 0 jika hasil pengukuran nol. Biarkan kosong jika
@@ -193,7 +196,7 @@ function WorkDetail({
                         let progress: number | null = null;
                         for (const stage of group.stages) {
                             const raw = values.get(stage.id);
-                            if (raw !== null && raw !== '') {
+                            if (typeof raw === 'string' && raw !== '') {
                                 progress =
                                     (progress ?? 0) +
                                     (Number(stage.weight) * Number(raw)) / 100;
@@ -210,10 +213,15 @@ function WorkDetail({
                                 {
                                     item: item.id,
                                     values: Object.fromEntries(
-                                        group.stages.map((s) => [
-                                            s.id,
-                                            String(entries.get(s.id) ?? ''),
-                                        ]),
+                                        group.stages.map((stage) => {
+                                            const value = entries.get(stage.id);
+                                            return [
+                                                stage.id,
+                                                typeof value === 'string'
+                                                    ? value
+                                                    : '',
+                                            ];
+                                        }),
                                     ),
                                 },
                                 {
@@ -269,7 +277,8 @@ function WorkDetail({
                             </strong>
                         ) : (
                             <strong>
-                                Progres item {percent(item.progress)}
+                                {construction ? 'Progres blok' : 'Progres item'}{' '}
+                                {percent(item.progress)}
                             </strong>
                         )}
                         <span>
@@ -347,6 +356,7 @@ export default function Dashboard(props: Monitoring) {
                         draft={props.draft}
                         revision={revision}
                         hasEstimate={props.hasEstimate}
+                        estimateWeights={props.estimateWeights}
                         canImportFormBuilder={props.canImportFormBuilder}
                     />
                 ) : (
@@ -503,17 +513,15 @@ export default function Dashboard(props: Monitoring) {
                                                             </Link>
                                                         </td>
                                                         <td>
-                                                            {percent(g.weight)}
+                                                            {percent(
+                                                                g.weight,
+                                                                '%',
+                                                                6,
+                                                            )}
                                                         </td>
                                                         <td>
                                                             {percent(
-                                                                g.contribution !=
-                                                                    null &&
-                                                                    g.weight
-                                                                    ? (100 *
-                                                                          g.contribution) /
-                                                                          g.weight
-                                                                    : null,
+                                                                g.progress,
                                                             )}
                                                         </td>
                                                         <td>
