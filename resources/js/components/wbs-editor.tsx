@@ -70,7 +70,7 @@ export function WbsEditor({
                 </Button>
                 <Button asChild variant="outline">
                     <a href={formBuilderExample.url()} download>
-                        Unduh Contoh Terisi
+                        Unduh Contoh Template Excel Terisi
                     </a>
                 </Button>
                 <FormBuilderImport
