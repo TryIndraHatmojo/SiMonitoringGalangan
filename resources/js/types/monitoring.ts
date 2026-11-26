@@ -32,6 +32,8 @@ export type Period = {
     id: number;
     start: string;
     end: string;
+    label: string | null;
+    axis_label: string;
     target: Weight;
     revision: number;
     closed_at: string | null;

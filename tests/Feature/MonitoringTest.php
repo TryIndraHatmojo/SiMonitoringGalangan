@@ -172,4 +172,42 @@ class MonitoringTest extends TestCase
         $this->patch($url, ['target' => 1])->assertNotFound();
         $this->post(route('projects.store'), ['code' => 'X', 'name' => 'X', 'yard' => 'X', 'start' => $week['start'], 'end' => $week['end'], 'source' => $a])->assertNotFound();
     }
+
+    public function test_period_labels_are_editable_and_fall_back_to_the_end_date_in_chart_history(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $project = $this->vessel('Tug');
+        $group = [
+            'id' => (string) Str::uuid(),
+            'name' => 'Pengecatan',
+            'items' => [$this->row('Lambung', 100)],
+            'stages' => [$this->row('Persiapan', 100)],
+        ];
+        $this->put(route('projects.structure', $project), ['groups' => [$group], 'publish' => true])->assertSessionHasNoErrors();
+        $create = route('projects.period', $project);
+        $this->post($create, ['start' => '2026-01-01', 'end' => '2026-01-07', 'target' => 20, 'label' => ' Minggu 1 '])
+            ->assertSessionHasNoErrors();
+        $period = DB::table('report_periods')->where('end', '2026-01-07')->value('id');
+        $this->post($create, ['start' => '2026-01-08', 'end' => '2026-01-14'])->assertSessionHasNoErrors();
+
+        $summary = route('dashboard', ['project' => $project, 'period' => $period]);
+        $this->get($summary)->assertInertia(fn (Assert $page) => $page
+            ->where('period.label', 'Minggu 1')
+            ->where('history.0.axis_label', 'Minggu 1')
+            ->where('history.1.axis_label', '2026-01-14'));
+
+        $update = route('projects.update', [$project, $period]);
+        $this->patch($update, ['label' => 'Pekan 1'])->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('report_periods', ['id' => $period, 'label' => 'Pekan 1', 'target' => 20]);
+        $this->get($summary)->assertInertia(fn (Assert $page) => $page->where('history.0.axis_label', 'Pekan 1'));
+
+        $this->patch($update, ['label' => '   ', 'target' => 25])->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('report_periods', ['id' => $period, 'label' => null, 'target' => 25]);
+        $this->get($summary)->assertInertia(fn (Assert $page) => $page->where('history.0.axis_label', '2026-01-07'));
+
+        $this->patch($update, ['label' => str_repeat('A', 41), 'target' => 30])->assertSessionHasErrors('label');
+        $this->assertDatabaseHas('report_periods', ['id' => $period, 'label' => null, 'target' => 25]);
+        $this->patch($update, ['close' => true])->assertSessionHasNoErrors();
+        $this->patch($update, ['label' => 'Minggu 1'])->assertSessionHasErrors('period');
+    }
 }

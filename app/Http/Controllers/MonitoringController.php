@@ -23,6 +23,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class MonitoringController extends Controller
 {
+    private const string PERIOD_LABEL_RULE = 'nullable|string|max:40';
+
     private function owned(Request $request): Builder
     {
         return DB::table('projects')->where('user_id', $request->user()->id);
@@ -59,6 +61,7 @@ class MonitoringController extends Controller
                 $entry['actual'] = (float) $row->reported_actual;
             }
             $row->actual = $entry['actual'];
+            $row->axis_label = filled($row->label) ? $row->label : $row->end;
             $row->is_simulated = (bool) $row->is_simulated;
             $row->partial = $row->reported_actual === null && $entry['measured'] < $entry['expected'];
             $row->deviation = $row->target !== null && $row->actual !== null ? $row->actual - $row->target : null;
@@ -386,7 +389,12 @@ class MonitoringController extends Controller
 
     public function period(Request $request, int $project): RedirectResponse
     {
-        $data = $request->validate(['start' => 'required|date_format:Y-m-d', 'end' => 'required|date_format:Y-m-d|after_or_equal:start', 'target' => 'nullable|numeric|between:0,100|decimal:0,4']);
+        $data = $request->validate([
+            'start' => 'required|date_format:Y-m-d',
+            'end' => 'required|date_format:Y-m-d|after_or_equal:start',
+            'label' => self::PERIOD_LABEL_RULE,
+            'target' => 'nullable|numeric|between:0,100|decimal:0,4',
+        ]);
         $id = DB::transaction(function () use ($request, $project, $data) {
             $this->owned($request)->lockForUpdate()->where('id', $project)->firstOrFail();
             $baseline = DB::table('baselines')->where('project_id', $project)->orderByDesc('revision')->value('id');
@@ -413,9 +421,12 @@ class MonitoringController extends Controller
 
                 return;
             }
-            if ($request->has('target')) {
-                $target = $request->validate(['target' => 'nullable|numeric|between:0,100|decimal:0,4']);
-                DB::table('report_periods')->where('id', $period)->update($target);
+            if ($request->hasAny(['label', 'target'])) {
+                $data = $request->validate([
+                    'label' => self::PERIOD_LABEL_RULE,
+                    'target' => 'nullable|numeric|between:0,100|decimal:0,4',
+                ]);
+                DB::table('report_periods')->where('id', $period)->update($data);
 
                 return;
             }

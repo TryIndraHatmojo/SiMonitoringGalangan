@@ -1,6 +1,7 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { useId, useState } from 'react';
 import { EstimateEditor } from '@/components/estimate-editor';
+import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
@@ -44,6 +45,39 @@ function DateField({
             <span id={hintId} className="text-xs text-muted-foreground">
                 Mis. {example}
             </span>
+        </div>
+    );
+}
+
+function PeriodLabelField({
+    value,
+    error,
+}: {
+    value?: string | null;
+    error?: string;
+}) {
+    const id = useId();
+    const hintId = id + '-hint';
+    const errorId = id + '-error';
+
+    return (
+        <div className="grid w-full max-w-sm gap-1">
+            <label htmlFor={id}>Label periode (opsional)</label>
+            <Input
+                id={id}
+                name="label"
+                type="text"
+                defaultValue={value ?? ''}
+                maxLength={40}
+                placeholder="Mis. Minggu 14"
+                aria-invalid={!!error}
+                aria-describedby={error ? hintId + ' ' + errorId : hintId}
+            />
+            <span id={hintId} className="text-xs text-muted-foreground">
+                Label ini tampil pada sumbu X Kurva S. Jika dikosongkan, grafik
+                menampilkan tanggal akhir periode.
+            </span>
+            <InputError id={errorId} message={error} />
         </div>
     );
 }
@@ -414,30 +448,45 @@ export default function Dashboard(props: Monitoring) {
                                     {revision ? (
                                         <Form
                                             {...createPeriod.form(project.id)}
-                                            className="mt-4 flex flex-wrap items-start gap-3"
+                                            errorBag="createPeriod"
+                                            className="mt-4 grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-4"
                                         >
-                                            <DateField
-                                                name="start"
-                                                label="Mulai"
-                                                example="30 September 2020"
-                                            />
-                                            <DateField
-                                                name="end"
-                                                label="Sampai"
-                                                example="6 Oktober 2020"
-                                            />
-                                            <label>
-                                                Target kumulatif (%)
-                                                <Input
-                                                    type="number"
-                                                    step="0.0001"
-                                                    min="0"
-                                                    max="100"
-                                                    name="target"
-                                                    placeholder={targetPlaceholder}
-                                                />
-                                            </label>
-                                            <Button className="mt-6.5">Buat periode</Button>
+                                            {({ errors, processing }) => (
+                                                <>
+                                                    <DateField
+                                                        name="start"
+                                                        label="Mulai"
+                                                        example="30 September 2020"
+                                                    />
+                                                    <DateField
+                                                        name="end"
+                                                        label="Sampai"
+                                                        example="6 Oktober 2020"
+                                                    />
+                                                    <label>
+                                                        Target kumulatif (%)
+                                                        <Input
+                                                            type="number"
+                                                            step="0.0001"
+                                                            min="0"
+                                                            max="100"
+                                                            name="target"
+                                                            placeholder={
+                                                                targetPlaceholder
+                                                            }
+                                                        />
+                                                    </label>
+                                                    <PeriodLabelField
+                                                        error={errors.label}
+                                                    />
+                                                    <Button
+                                                        className="justify-self-start"
+                                                        disabled={processing}
+                                                    >
+                                                        Buat periode
+                                                    </Button>
+                                                </>
+                                            )}
                                         </Form>
                                     ) : (
                                         <p>
@@ -564,34 +613,51 @@ export default function Dashboard(props: Monitoring) {
                             />
                         )}
                         {section === 'input' && period && !period.closed_at && (
-                            <section className="flex flex-wrap items-end justify-between gap-4">
+                            <section className="flex flex-wrap items-start justify-between gap-4">
                                 <Form
                                     key={period.id}
                                     {...update.form([project.id, period.id])}
-                                    className="flex items-end gap-2"
+                                    errorBag="updatePeriod"
+                                    className="grid items-start gap-3 sm:grid-cols-2"
                                 >
-                                    <label>
-                                        Target kumulatif (%)
-                                        <Input
-                                            name="target"
-                                            type="number"
-                                            min="0"
-                                            max="100"
-                                            step="0.0001"
-                                            defaultValue={period.target ?? ''}
-                                            placeholder={targetPlaceholder}
-                                        />
-                                    </label>
-                                    <Button variant="outline">
-                                        Simpan target
-                                    </Button>
+                                    {({ errors, processing }) => (
+                                        <>
+                                            <label>
+                                                Target kumulatif (%)
+                                                <Input
+                                                    name="target"
+                                                    type="number"
+                                                    min="0"
+                                                    max="100"
+                                                    step="0.0001"
+                                                    defaultValue={
+                                                        period.target ?? ''
+                                                    }
+                                                    placeholder={
+                                                        targetPlaceholder
+                                                    }
+                                                />
+                                            </label>
+                                            <PeriodLabelField
+                                                value={period.label}
+                                                error={errors.label}
+                                            />
+                                            <Button
+                                                className="justify-self-start"
+                                                variant="outline"
+                                                disabled={processing}
+                                            >
+                                                Simpan periode
+                                            </Button>
+                                        </>
+                                    )}
                                 </Form>
                                 <Button
                                     variant="outline"
                                     onClick={() => {
                                         if (
                                             window.confirm(
-                                                'Tutup periode ini? Realisasi dan target akan dikunci.',
+                                                'Tutup periode ini? Realisasi, target, dan label periode akan dikunci.',
                                             )
                                         )
                                             router.patch(
