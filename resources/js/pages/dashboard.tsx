@@ -74,7 +74,7 @@ function PeriodLabelField({
                 aria-describedby={error ? hintId + ' ' + errorId : hintId}
             />
             <span id={hintId} className="text-xs text-muted-foreground">
-                Label ini tampil pada sumbu X Kurva S. Jika dikosongkan, grafik
+                Label ini tampil pada sumbu X S Curve. Jika dikosongkan, grafik
                 menampilkan tanggal akhir periode.
             </span>
             <InputError id={errorId} message={error} />

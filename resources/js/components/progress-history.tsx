@@ -30,7 +30,7 @@ export function History({ history }: { history: Period[] }) {
     const y = (value: number) => 170 - 1.45 * value;
     return (
         <section className="min-w-0 border-progress-grid bg-progress-surface text-progress-foreground">
-            <h2>Kurva S pembangunan</h2>
+            <h2>S Curve pembangunan</h2>
             {!history.length ? (
                 <span>Belum ada periode laporan.</span>
             ) : (
@@ -47,12 +47,12 @@ export function History({ history }: { history: Period[] }) {
                     <div
                         className="overflow-x-auto"
                         role="region"
-                        aria-label="Grafik Kurva S"
+                        aria-label="Grafik S Curve"
                         tabIndex={0}
                     >
                         <svg
                             role="img"
-                            aria-label="Kurva S kumulatif dengan label periode pada sumbu X. Rincian tersedia dalam tabel histori."
+                            aria-label="S Curve kumulatif dengan label periode pada sumbu X. Rincian tersedia dalam tabel histori."
                             viewBox={`0 0 ${width} ${184 + labelSpace}`}
                             className="w-full"
                             style={{ minWidth }}
