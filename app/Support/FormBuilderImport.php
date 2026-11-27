@@ -27,16 +27,32 @@ class FormBuilderImport
         'file.extensions' => 'Pilih file Excel dengan ekstensi .xlsx.',
     ];
 
-    private const HEADERS = [
-        'B8' => 'Kelompok pekerjaan',
-        'C8' => 'Nama item pekerjaan',
-        'D8' => 'Volume',
-        'E8' => 'Satuan',
-        'F8' => 'Harga lokal (Rp)',
-        'G8' => 'Jenis harga lokal',
-        'H8' => 'Harga satuan impor (USD)',
-        'I8' => 'Uraian EE',
+    /** Column letter and header label per field of the current template. */
+    private const COLUMNS = [
+        'group' => ['B', 'Kelompok pekerjaan'],
+        'type' => ['C', 'Tipe kelompok'],
+        'item' => ['D', 'Nama item pekerjaan'],
+        'quantity' => ['E', 'Volume'],
+        'unit' => ['F', 'Satuan'],
+        'local' => ['G', 'Harga lokal (Rp)'],
+        'priceType' => ['H', 'Jenis harga lokal'],
+        'usd' => ['I', 'Harga satuan impor (USD)'],
+        'description' => ['J', 'Uraian EE'],
     ];
+
+    /** Templates downloaded before group types existed have no "Tipe kelompok" column. */
+    private const LEGACY_COLUMNS = [
+        'group' => ['B', 'Kelompok pekerjaan'],
+        'item' => ['C', 'Nama item pekerjaan'],
+        'quantity' => ['D', 'Volume'],
+        'unit' => ['E', 'Satuan'],
+        'local' => ['F', 'Harga lokal (Rp)'],
+        'priceType' => ['G', 'Jenis harga lokal'],
+        'usd' => ['H', 'Harga satuan impor (USD)'],
+        'description' => ['I', 'Uraian EE'],
+    ];
+
+    private const BLOCK_HEADERS = ['B8' => 'Kelompok pekerjaan', 'C8' => 'Nama blok', 'D8' => 'Berat (ton)'];
 
     private const BLANK_CELL = ['type' => '', 'value' => '', 'formula' => false];
 
@@ -64,27 +80,19 @@ class FormBuilderImport
      */
     public function prepare(UploadedFile $file): array
     {
-        ['cells' => $cells, 'uses1904Dates' => $uses1904Dates] = $this->workbook->read($file->getPathname());
-        foreach (self::HEADERS as $address => $label) {
-            $header = $cells[$address] ?? self::BLANK_CELL;
-            if ($header['formula'] || trim($header['value']) !== $label) {
-                throw ValidationException::withMessages([
-                    'file' => "Judul kolom di Item Pekerjaan!{$address} harus “{$label}”. Unduh template Form Builder terbaru.",
-                ]);
-            }
+        ['cells' => $cells, 'blockCells' => $blockCells, 'uses1904Dates' => $uses1904Dates] = $this->workbook->read($file->getPathname());
+        $columns = trim($cells['C8']['value'] ?? '') === self::COLUMNS['type'][1] ? self::COLUMNS : self::LEGACY_COLUMNS;
+        $headers = [];
+        foreach ($columns as [$letter, $label]) {
+            $headers["{$letter}8"] = $label;
         }
+        $this->assertHeaders($cells, $headers, 'Item Pekerjaan');
+        $lastColumn = $columns['description'][0];
+        // Anything right of the last input column, such as the total formula, is not imported.
+        $cells = array_filter($cells, fn (string $address): bool => (int) substr($address, 1) === 6 || $address[0] <= $lastColumn, ARRAY_FILTER_USE_KEY);
 
         $errors = [];
-        $rows = [];
-        foreach ($cells as $address => $cell) {
-            $row = (int) substr($address, 1);
-            if ($row >= 9) {
-                $rows[$row][$address[0]] = $cell;
-            }
-            if ($cell['formula']) {
-                $errors[$address] = 'Isi nilai langsung di sel ini.';
-            }
-        }
+        $rows = $this->rows($cells, $errors);
 
         $rate = $this->number($cells['C6'] ?? self::BLANK_CELL, 10, 'C6', $errors);
         $date = $this->date($cells['E6'] ?? self::BLANK_CELL, $uses1904Dates, $errors);
@@ -98,34 +106,37 @@ class FormBuilderImport
 
         $groups = [];
         $lines = [];
-        ksort($rows, SORT_NUMERIC);
-        foreach ($rows as $row => $columns) {
-            if (array_all($columns, fn (array $cell): bool => trim($cell['value']) === '' && ! $cell['formula'])) {
-                continue;
-            }
+        foreach ($rows as $row => $values) {
+            $address = fn (string $field): string => $columns[$field][0].$row;
+            $cell = fn (string $field): array => isset($columns[$field]) ? $values[$columns[$field][0]] ?? self::BLANK_CELL : self::BLANK_CELL;
 
-            $group = $this->text($columns['B'] ?? self::BLANK_CELL, 255, "B{$row}", $errors, required: true);
-            $item = $this->text($columns['C'] ?? self::BLANK_CELL, 255, "C{$row}", $errors, required: true);
-            $quantity = $this->number($columns['D'] ?? self::BLANK_CELL, 10, "D{$row}", $errors);
-            $unit = $this->text($columns['E'] ?? self::BLANK_CELL, 50, "E{$row}", $errors);
-            $local = $this->number($columns['F'] ?? self::BLANK_CELL, 14, "F{$row}", $errors);
-            $priceType = $this->text($columns['G'] ?? self::BLANK_CELL, 20, "G{$row}", $errors);
-            $usd = $this->number($columns['H'] ?? self::BLANK_CELL, 14, "H{$row}", $errors);
-            $description = $this->text($columns['I'] ?? self::BLANK_CELL, 255, "I{$row}", $errors);
+            $group = $this->text($cell('group'), 255, $address('group'), $errors, required: true);
+            $type = isset($columns['type']) ? $this->text($cell('type'), 20, $address('type'), $errors) : null;
+            if (! in_array($type, [null, 'Standar', 'Konstruksi'], true)) {
+                $errors[$address('type')] ??= 'Pilih Standar atau Konstruksi.';
+            }
+            $construction = $type === 'Konstruksi';
+            $item = $this->text($cell('item'), 255, $address('item'), $errors, required: true);
+            $quantity = $this->number($cell('quantity'), 10, $address('quantity'), $errors);
+            $unit = $this->text($cell('unit'), 50, $address('unit'), $errors);
+            $local = $this->number($cell('local'), 14, $address('local'), $errors);
+            $priceType = $this->text($cell('priceType'), 20, $address('priceType'), $errors);
+            $usd = $this->number($cell('usd'), 14, $address('usd'), $errors);
+            $description = $this->text($cell('description'), 255, $address('description'), $errors);
 
             if (! in_array($priceType, [null, 'Harga satuan', 'Total (lump sum)'], true)) {
-                $errors["G{$row}"] ??= 'Pilih Harga satuan atau Total (lump sum).';
+                $errors[$address('priceType')] ??= 'Pilih Harga satuan atau Total (lump sum).';
             }
             $lumpSum = $priceType === 'Total (lump sum)';
-            if ($local === null && $usd === null && ! isset($errors["H{$row}"])) {
-                $errors["F{$row}"] ??= 'Isi harga lokal, harga impor, atau keduanya.';
+            if ($local === null && $usd === null && ! isset($errors[$address('usd')])) {
+                $errors[$address('local')] ??= 'Isi harga lokal, harga impor, atau keduanya.';
             }
             if ($usd !== null || ($local !== null && ! $lumpSum)) {
                 if ($quantity?->isPositive() !== true) {
-                    $errors["D{$row}"] ??= 'Isi volume lebih dari nol untuk harga satuan.';
+                    $errors[$address('quantity')] ??= 'Isi volume lebih dari nol untuk harga satuan.';
                 }
                 if ($unit === null) {
-                    $errors["E{$row}"] ??= 'Isi satuan untuk harga satuan.';
+                    $errors[$address('unit')] ??= 'Isi satuan untuk harga satuan.';
                 }
             }
             if ($usd?->isPositive() && $rate?->isPositive() !== true) {
@@ -135,32 +146,62 @@ class FormBuilderImport
                 continue;
             }
 
-            $groups[$group] ??= ['id' => (string) Str::uuid(), 'name' => $group, 'items' => [], 'stages' => []];
-            $itemId = (string) Str::uuid();
-            $groups[$group]['items'][] = ['id' => $itemId, 'name' => $item, 'weight' => null];
+            $groups[$group] ??= ['id' => (string) Str::uuid(), 'name' => $group, 'items' => [], 'stages' => []]
+                + ($construction ? ['type' => 'construction'] : []);
+            if (WorkBreakdown::isConstruction($groups[$group]) !== $construction) {
+                $errors[$address(isset($columns['type']) ? 'type' : 'group')] ??= 'Gunakan tipe yang sama untuk semua baris kelompok ini.';
+
+                continue;
+            }
+
+            // A construction row is a cost on the group itself; a standard row is also a work item.
+            $itemId = null;
+            if (! $construction) {
+                $itemId = (string) Str::uuid();
+                $groups[$group]['items'][] = ['id' => $itemId, 'name' => $item, 'weight' => null];
+            }
             $lines[] = [
                 'position' => count($lines) + 1,
                 'wbs_item_id' => $itemId,
+                'wbs_group_id' => $construction ? $groups[$group]['id'] : null,
                 'description' => $description ?? $item,
                 'quantity' => $quantity === null ? null : (string) $quantity,
                 'unit' => $unit,
                 'local_price_idr' => $local === null ? null : (string) $local,
                 'local_price_is_lump_sum' => $lumpSum,
                 'usd_unit_price' => $usd === null ? null : (string) $usd,
-                'source_reference' => "Item Pekerjaan!B{$row}:I{$row}",
+                'source_reference' => "Item Pekerjaan!B{$row}:{$lastColumn}{$row}",
                 'source_work_group' => $group,
             ];
         }
 
-        if ($errors !== []) {
-            $messages = [];
-            if (count($errors) > 100) {
-                $messages['file'] = 'Lebih dari 100 sel perlu diperiksa. Perbaiki sel yang ditampilkan, lalu tinjau kembali.';
+        $blockErrors = [];
+        if ($blockCells !== null) {
+            $this->addBlocks($blockCells, $groups, $blockErrors);
+        }
+        // Only meaningful once every row itself is valid.
+        if ($errors === [] && $blockErrors === []) {
+            foreach ($groups as $group) {
+                if (WorkBreakdown::isConstruction($group) && $group['items'] === []) {
+                    throw ValidationException::withMessages([
+                        'file' => "Isi minimal satu blok untuk kelompok Konstruksi “{$group['name']}” pada lembar Blok Konstruksi.",
+                    ]);
+                }
             }
-            foreach (array_slice($errors, 0, 100, preserve_keys: true) as $address => $message) {
-                $messages["cells.{$address}"] = "Item Pekerjaan!{$address} — {$message}";
-            }
-            throw ValidationException::withMessages($messages);
+        }
+
+        $messages = [];
+        foreach ($errors as $address => $message) {
+            $messages["cells.{$address}"] = "Item Pekerjaan!{$address} — {$message}";
+        }
+        foreach ($blockErrors as $address => $message) {
+            $messages["blocks.{$address}"] = "Blok Konstruksi!{$address} — {$message}";
+        }
+        if ($messages !== []) {
+            $summary = count($messages) > 100
+                ? ['file' => 'Lebih dari 100 sel perlu diperiksa. Perbaiki sel yang ditampilkan, lalu tinjau kembali.']
+                : [];
+            throw ValidationException::withMessages($summary + array_slice($messages, 0, 100, preserve_keys: true));
         }
 
         if ($lines === []) {
@@ -182,6 +223,75 @@ class FormBuilderImport
             ],
             'lines' => $lines,
         ];
+    }
+
+    /**
+     * @param  array<string, Cell>  $cells
+     * @param  array<string, string>  $headers
+     */
+    private function assertHeaders(array $cells, array $headers, string $sheet): void
+    {
+        foreach ($headers as $address => $label) {
+            $header = $cells[$address] ?? self::BLANK_CELL;
+            if ($header['formula'] || trim($header['value']) !== $label) {
+                throw ValidationException::withMessages([
+                    'file' => "Judul kolom di {$sheet}!{$address} harus “{$label}”. Unduh template Form Builder terbaru.",
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Non-empty data rows keyed by row number, then by column letter.
+     *
+     * @param  array<string, Cell>  $cells
+     * @param  array<string, string>  $errors
+     * @return array<int, array<string, Cell>>
+     */
+    private function rows(array $cells, array &$errors): array
+    {
+        $rows = [];
+        foreach ($cells as $address => $cell) {
+            $row = (int) substr($address, 1);
+            if ($row >= 9) {
+                $rows[$row][$address[0]] = $cell;
+            }
+            if ($cell['formula']) {
+                $errors[$address] = 'Isi nilai langsung di sel ini.';
+            }
+        }
+        ksort($rows, SORT_NUMERIC);
+
+        return array_filter($rows, fn (array $columns): bool => ! array_all(
+            $columns,
+            fn (array $cell): bool => trim($cell['value']) === '' && ! $cell['formula'],
+        ));
+    }
+
+    /**
+     * @param  array<string, Cell>  $cells
+     * @param  array<string, WorkGroup>  $groups
+     * @param  array<string, string>  $errors
+     */
+    private function addBlocks(array $cells, array &$groups, array &$errors): void
+    {
+        $this->assertHeaders($cells, self::BLOCK_HEADERS, 'Blok Konstruksi');
+        foreach ($this->rows($cells, $errors) as $row => $columns) {
+            $group = $this->text($columns['B'] ?? self::BLANK_CELL, 255, "B{$row}", $errors, required: true);
+            $name = $this->text($columns['C'] ?? self::BLANK_CELL, 255, "C{$row}", $errors, required: true);
+            $tons = $this->number($columns['D'] ?? self::BLANK_CELL, 10, "D{$row}", $errors);
+            if ($tons?->isPositive() !== true) {
+                $errors["D{$row}"] ??= 'Isi berat blok lebih dari nol.';
+            }
+            if ($group !== null && (! isset($groups[$group]) || ! WorkBreakdown::isConstruction($groups[$group]))) {
+                $errors["B{$row}"] ??= 'Tulis nama kelompok bertipe Konstruksi yang ada di lembar Item Pekerjaan.';
+
+                continue;
+            }
+            if ($group !== null && $name !== null && $tons !== null) {
+                $groups[$group]['items'][] = ['id' => (string) Str::uuid(), 'name' => $name, 'weight_tons' => (string) $tons];
+            }
+        }
     }
 
     public function token(UploadedFile $file, int $user, int $project): string

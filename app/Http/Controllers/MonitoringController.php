@@ -280,13 +280,17 @@ class MonitoringController extends Controller
         $file = $data['file'];
         ['groups' => $groups, 'settings' => $settings, 'lines' => $lines] = $import->prepare($file);
         $totals = EngineeringEstimate::preview($lines, $settings['exchange_rate_idr_per_usd']);
+        $costCounts = array_count_values(array_filter(array_column($lines, 'wbs_group_id')));
 
         return response()->json([
             'preview_token' => $import->token($file, (int) $request->user()->id, $project),
             'groups' => array_map(fn (array $group): array => [
                 'name' => $group['name'],
                 'item_count' => count($group['items']),
-            ], $groups),
+            ] + (WorkBreakdown::isConstruction($group) ? [
+                'type' => 'construction',
+                'cost_count' => $costCounts[$group['id']] ?? 0,
+            ] : []), $groups),
             'item_count' => count($lines),
             'exchange_rate_idr_per_usd' => $settings['exchange_rate_idr_per_usd'],
             'exchange_rate_date' => $settings['exchange_rate_date'],

@@ -22,7 +22,12 @@ import type { Group } from '@/types/monitoring';
 
 type ImportPreview = {
     preview_token: string;
-    groups: { name: string; item_count: number }[];
+    groups: {
+        name: string;
+        item_count: number;
+        type?: 'construction';
+        cost_count?: number;
+    }[];
     item_count: number;
     exchange_rate_idr_per_usd: string | null;
     exchange_rate_date: string | null;
@@ -213,7 +218,8 @@ function PreviewSummary({ preview }: { preview: ImportPreview }) {
     return (
         <section className="grid gap-3 rounded-md border p-3 text-sm">
             <h3 className="font-medium">
-                {preview.groups.length} kelompok · {preview.item_count} item
+                {preview.groups.length} kelompok · {preview.item_count} baris
+                biaya EE
             </h3>
             <ul className="max-h-32 divide-y overflow-y-auto">
                 {preview.groups.map((group) => (
@@ -225,7 +231,9 @@ function PreviewSummary({ preview }: { preview: ImportPreview }) {
                             {group.name}
                         </span>
                         <span className="shrink-0 text-muted-foreground">
-                            {group.item_count} item
+                            {group.type === 'construction'
+                                ? `Konstruksi · ${group.item_count} blok · ${group.cost_count} biaya EE`
+                                : `${group.item_count} item`}
                         </span>
                     </li>
                 ))}

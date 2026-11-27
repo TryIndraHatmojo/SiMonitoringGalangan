@@ -15,6 +15,8 @@ class FormBuilderWorkbook
 {
     private const SHEET = 'Item Pekerjaan';
 
+    private const BLOCK_SHEET = 'Blok Konstruksi';
+
     private const SPREADSHEET = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 
     private const RELATIONSHIPS = 'http://schemas.openxmlformats.org/package/2006/relationships';
@@ -30,7 +32,9 @@ class FormBuilderWorkbook
     private const STRINGS_LIMIT = 8 * 1024 * 1024;
 
     /**
-     * @return array{cells: array<string, Cell>, uses1904Dates: bool}
+     * `blockCells` is null when the workbook has no block sheet, as in older templates.
+     *
+     * @return array{cells: array<string, Cell>, blockCells: array<string, Cell>|null, uses1904Dates: bool}
      */
     public function read(string $path): array
     {
@@ -41,37 +45,54 @@ class FormBuilderWorkbook
 
         try {
             $this->assertXlsx($zip);
-            [$sheet, $uses1904Dates] = $this->sheetPath($zip);
+            ['sheets' => $sheets, 'uses1904Dates' => $uses1904Dates] = $this->sheetPaths($zip);
             $strings = $this->sharedStrings($zip);
-            $cells = [];
-            $rows = [];
-            foreach ($this->elements($zip, $sheet, self::SHEET_LIMIT, self::SPREADSHEET, 'worksheet', ['c' => 3], '/\A(?:[CEG]6|[B-I][1-9]\d{0,6})\z/') as $element) {
-                $address = $element->getAttribute('r');
-                $row = (int) substr($address, 1);
-                if ($row < 8 && ! in_array($address, ['C6', 'E6', 'G6'], true)) {
-                    continue;
-                }
+            $cells = $this->cells($zip, $sheets[self::SHEET], $strings, '/\A(?:[CEG]6|[B-J][1-9]\d{0,6})\z/', ['C6', 'E6', 'G6']);
+            $blockCells = isset($sheets[self::BLOCK_SHEET])
+                ? $this->cells($zip, $sheets[self::BLOCK_SHEET], $strings, '/\A[B-D][1-9]\d{0,6}\z/')
+                : null;
 
-                $cell = $this->readCell($element, $strings);
-                if ($cell['value'] === '' && ! $cell['formula']) {
-                    continue;
-                }
-                if (isset($cells[$address])) {
-                    $this->invalidWorkbook();
-                }
-                if ($row >= 9 && ! isset($rows[$row])) {
-                    $rows[$row] = true;
-                    if (count($rows) > 5000) {
-                        $this->invalidWorkbook('Template memuat lebih dari 5.000 baris data.');
-                    }
-                }
-                $cells[$address] = $cell;
-            }
-
-            return ['cells' => $cells, 'uses1904Dates' => $uses1904Dates];
+            return ['cells' => $cells, 'blockCells' => $blockCells, 'uses1904Dates' => $uses1904Dates];
         } finally {
             $zip->close();
         }
+    }
+
+    /**
+     * Filled cells from the header row (8) down, plus the listed settings cells.
+     *
+     * @param  list<string>  $strings
+     * @param  list<string>  $settings
+     * @return array<string, Cell>
+     */
+    private function cells(ZipArchive $zip, string $sheet, array $strings, string $pattern, array $settings = []): array
+    {
+        $cells = [];
+        $rows = [];
+        foreach ($this->elements($zip, $sheet, self::SHEET_LIMIT, self::SPREADSHEET, 'worksheet', ['c' => 3], $pattern) as $element) {
+            $address = $element->getAttribute('r');
+            $row = (int) substr($address, 1);
+            if ($row < 8 && ! in_array($address, $settings, true)) {
+                continue;
+            }
+
+            $cell = $this->readCell($element, $strings);
+            if ($cell['value'] === '' && ! $cell['formula']) {
+                continue;
+            }
+            if (isset($cells[$address])) {
+                $this->invalidWorkbook();
+            }
+            if ($row >= 9 && ! isset($rows[$row])) {
+                $rows[$row] = true;
+                if (count($rows) > 5000) {
+                    $this->invalidWorkbook('Template memuat lebih dari 5.000 baris data.');
+                }
+            }
+            $cells[$address] = $cell;
+        }
+
+        return $cells;
     }
 
     private function assertXlsx(ZipArchive $zip): void
@@ -87,36 +108,37 @@ class FormBuilderWorkbook
         }
     }
 
-    /** @return array{string, bool} */
-    private function sheetPath(ZipArchive $zip): array
+    /** @return array{sheets: array<string, string>, uses1904Dates: bool} */
+    private function sheetPaths(ZipArchive $zip): array
     {
-        $sheetId = null;
+        $ids = [];
         $uses1904Dates = false;
         foreach ($this->elements($zip, 'xl/workbook.xml', self::METADATA_LIMIT, self::SPREADSHEET, 'workbook', ['workbookPr' => 1, 'sheet' => 2]) as $element) {
             if ($element->localName === 'workbookPr') {
                 $uses1904Dates = in_array($element->getAttribute('date1904'), ['1', 'true'], true);
-            } elseif ($element->getAttribute('name') === self::SHEET) {
-                $sheetId = $element->getAttributeNS(self::DOCUMENT_RELATIONSHIPS, 'id');
+            } elseif (in_array($element->getAttribute('name'), [self::SHEET, self::BLOCK_SHEET], true)) {
+                $ids[$element->getAttribute('name')] = $element->getAttributeNS(self::DOCUMENT_RELATIONSHIPS, 'id');
             }
         }
-        if (! $sheetId) {
+        if (empty($ids[self::SHEET])) {
             $this->invalidWorkbook('Lembar Item Pekerjaan tidak ditemukan.');
         }
 
-        $path = null;
+        $targets = [];
         foreach ($this->elements($zip, 'xl/_rels/workbook.xml.rels', self::METADATA_LIMIT, self::RELATIONSHIPS, 'Relationships', ['Relationship' => 1]) as $element) {
-            if ($element->getAttribute('Id') === $sheetId
-                && $element->getAttribute('Type') === self::DOCUMENT_RELATIONSHIPS.'/worksheet'
+            if ($element->getAttribute('Type') === self::DOCUMENT_RELATIONSHIPS.'/worksheet'
                 && in_array($element->getAttribute('TargetMode'), ['', 'Internal'], true)
                 && preg_match('~\A(?:/xl/)?(worksheets/[A-Za-z0-9_.-]+\.xml)\z~', $element->getAttribute('Target'), $matches)) {
-                $path = 'xl/'.$matches[1];
+                $targets[$element->getAttribute('Id')] = 'xl/'.$matches[1];
             }
         }
-        if ($path === null) {
-            $this->invalidWorkbook();
+
+        $sheets = [];
+        foreach ($ids as $name => $id) {
+            $sheets[$name] = $targets[$id] ?? $this->invalidWorkbook();
         }
 
-        return [$path, $uses1904Dates];
+        return ['sheets' => $sheets, 'uses1904Dates' => $uses1904Dates];
     }
 
     /** @return list<string> */

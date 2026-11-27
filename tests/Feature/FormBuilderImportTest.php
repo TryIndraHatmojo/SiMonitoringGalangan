@@ -46,6 +46,7 @@ class FormBuilderImportTest extends TestCase
         $this->preview($project, $file)->assertOk()
             ->assertJsonCount(9, 'groups')
             ->assertJsonPath('groups.0', ['name' => 'Design & Approval Drawing', 'item_count' => 4])
+            ->assertJsonPath('groups.2', ['name' => 'Hull Construction', 'item_count' => 12, 'type' => 'construction', 'cost_count' => 7])
             ->assertJsonPath('item_count', 309)
             ->assertJsonPath('exchange_rate_idr_per_usd', '13138')
             ->assertJsonPath('exchange_rate_date', null)
@@ -61,10 +62,10 @@ class FormBuilderImportTest extends TestCase
         $period = DB::table('report_periods')->insertGetId(['baseline_id' => $existingBaseline, 'start' => '2026-01-01', 'end' => '2026-01-07']);
         $file = $this->workbook([
             'C6' => 20, 'E6' => 45292, 'G6' => 'Tidak',
-            'B9' => 'Perpipaan', 'C9' => 'Pompa', 'D9' => 2, 'E9' => 'unit', 'F9' => 50, 'J9' => 9_999_999,
-            'B10' => 'Perpipaan', 'C10' => 'Pompa', 'F10' => 100, 'G10' => 'Total (lump sum)', 'I10' => 'Jasa pemasangan',
-            'B25' => 'Listrik', 'C25' => 'Panel', 'D25' => 2, 'E25' => 'unit', 'F25' => 25.000000000000004, 'G25' => 'Harga satuan', 'H25' => 1.25,
-            'B26' => 'Perpipaan', 'C26' => 'Pipa', 'F26' => 0, 'G26' => 'Total (lump sum)',
+            'B9' => 'Perpipaan', 'D9' => 'Pompa', 'E9' => 2, 'F9' => 'unit', 'G9' => 50, 'K9' => 9_999_999,
+            'B10' => 'Perpipaan', 'C10' => 'Standar', 'D10' => 'Pompa', 'G10' => 100, 'H10' => 'Total (lump sum)', 'J10' => 'Jasa pemasangan',
+            'B25' => 'Listrik', 'D25' => 'Panel', 'E25' => 2, 'F25' => 'unit', 'G25' => 25.000000000000004, 'H25' => 'Harga satuan', 'I25' => 1.25,
+            'B26' => 'Perpipaan', 'D26' => 'Pipa', 'G26' => 0, 'H26' => 'Total (lump sum)',
         ]);
 
         $this->get($builder)->assertInertia(fn (Assert $page) => $page->where('canImportFormBuilder', true));
@@ -98,7 +99,7 @@ class FormBuilderImportTest extends TestCase
         ]);
         $this->assertDatabaseHas('engineering_estimate_lines', [
             'position' => 2, 'wbs_item_id' => $groups[0]['items'][1]['id'], 'description' => 'Jasa pemasangan',
-            'local_price_is_lump_sum' => true, 'source_work_group' => 'Perpipaan', 'source_reference' => 'Item Pekerjaan!B10:I10',
+            'local_price_is_lump_sum' => true, 'source_work_group' => 'Perpipaan', 'source_reference' => 'Item Pekerjaan!B10:J10',
         ]);
         $this->assertDatabaseHas('engineering_estimate_lines', [
             'position' => 3, 'wbs_item_id' => $groups[1]['items'][0]['id'], 'usd_unit_price' => '1.25',
@@ -124,13 +125,13 @@ class FormBuilderImportTest extends TestCase
     {
         $project = $this->createProject();
         $file = $this->workbook([
-            'C6' => null, 'E6' => 60, 'B9' => 'Listrik', 'F9' => '<formula>', 'H9' => 1,
-            'B10' => 'Listrik', 'C10' => 'Kabel', 'F10' => -1, 'G10' => 'Lump Sum',
+            'C6' => null, 'E6' => 60, 'B9' => 'Listrik', 'G9' => '<formula>', 'I9' => 1,
+            'B10' => 'Listrik', 'D10' => 'Kabel', 'G10' => -1, 'H10' => 'Lump Sum',
         ]);
 
         $this->preview($project, $file)->assertUnprocessable()
-            ->assertJsonValidationErrors(['cells.C6', 'cells.E6', 'cells.C9', 'cells.D9', 'cells.E9', 'cells.F9', 'cells.F10', 'cells.G10'])
-            ->assertSee('Item Pekerjaan!F9', escape: false);
+            ->assertJsonValidationErrors(['cells.C6', 'cells.E6', 'cells.D9', 'cells.E9', 'cells.F9', 'cells.G9', 'cells.G10', 'cells.H10'])
+            ->assertSee('Item Pekerjaan!G9', escape: false);
         $this->assertDatabaseHas('projects', ['id' => $project, 'draft' => '[]']);
         $this->assertDatabaseCount('engineering_estimates', 0);
     }
@@ -227,6 +228,80 @@ class FormBuilderImportTest extends TestCase
         $this->assertDatabaseCount('engineering_estimate_lines', 0);
     }
 
+    public function test_import_maps_construction_costs_to_the_group_and_creates_its_blocks(): void
+    {
+        $project = $this->createProject();
+        $file = $this->workbook([
+            'B9' => 'Konstruksi Lambung', 'C9' => 'Konstruksi', 'D9' => 'Plat', 'G9' => 60, 'H9' => 'Total (lump sum)',
+            'B10' => 'Desain', 'C10' => 'Standar', 'D10' => 'Gambar', 'G10' => 25, 'H10' => 'Total (lump sum)',
+            'B11' => 'Konstruksi Lambung', 'C11' => 'Konstruksi', 'D11' => 'Elektroda', 'G11' => 15, 'H11' => 'Total (lump sum)',
+        ], [
+            'B9' => 'Konstruksi Lambung', 'C9' => '101 (DB)', 'D9' => 30,
+            'B10' => 'Konstruksi Lambung', 'C10' => '102 (DB)', 'D10' => 10,
+        ]);
+
+        $preview = $this->preview($project, $file)->assertOk()
+            ->assertJsonPath('item_count', 3)
+            ->assertJsonPath('groups', [
+                ['name' => 'Konstruksi Lambung', 'item_count' => 2, 'type' => 'construction', 'cost_count' => 2],
+                ['name' => 'Desain', 'item_count' => 1],
+            ]);
+        $this->applyImport($project, $file, $preview->json('preview_token'))->assertSessionHasNoErrors();
+
+        [$construction, $standard] = json_decode(DB::table('projects')->where('id', $project)->value('draft'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('construction', $construction['type']);
+        $this->assertEquals(75, $construction['project_weight']);
+        $this->assertSame(['101 (DB)', '102 (DB)'], array_column($construction['items'], 'name'));
+        $this->assertSame(['30', '10'], array_column($construction['items'], 'weight_tons'));
+        $this->assertEquals([75, 25], array_column($construction['items'], 'group_weight'));
+        $this->assertEquals(25, $standard['items'][0]['weight']);
+        $this->assertSame(
+            [[$construction['id'], null], [null, $standard['items'][0]['id']], [$construction['id'], null]],
+            DB::table('engineering_estimate_lines')->orderBy('position')->get()
+                ->map(fn (object $line): array => [$line->wbs_group_id, $line->wbs_item_id])->all(),
+        );
+    }
+
+    public function test_import_rejects_invalid_group_types_and_block_rows(): void
+    {
+        $project = $this->createProject();
+        $file = $this->workbook([
+            'B9' => 'Lambung', 'C9' => 'Konstruksi', 'D9' => 'Plat', 'G9' => 10, 'H9' => 'Total (lump sum)',
+            'B10' => 'Lambung', 'C10' => 'Standar', 'D10' => 'Elektroda', 'G10' => 10, 'H10' => 'Total (lump sum)',
+            'B11' => 'Desain', 'C11' => 'Lain', 'D11' => 'Gambar', 'G11' => 10, 'H11' => 'Total (lump sum)',
+        ], [
+            'B9' => 'Desain', 'C9' => '101', 'D9' => 5,
+            'B10' => 'Lambung', 'D10' => 0,
+        ]);
+
+        $this->preview($project, $file)->assertUnprocessable()
+            ->assertJsonValidationErrors(['cells.C10', 'cells.C11', 'blocks.B9', 'blocks.C10', 'blocks.D10']);
+    }
+
+    public function test_import_requires_a_block_for_every_construction_group(): void
+    {
+        $project = $this->createProject();
+        $file = $this->workbook(['B9' => 'Lambung', 'C9' => 'Konstruksi', 'D9' => 'Plat', 'G9' => 10, 'H9' => 'Total (lump sum)']);
+
+        $this->preview($project, $file)->assertUnprocessable()
+            ->assertJsonPath('errors.file.0', 'Isi minimal satu blok untuk kelompok Konstruksi “Lambung” pada lembar Blok Konstruksi.');
+    }
+
+    public function test_templates_without_a_group_type_column_still_import_as_standard(): void
+    {
+        $project = $this->createProject();
+        $file = $this->workbook(
+            ['B9' => 'Kelistrikan', 'C9' => 'Kabel', 'F9' => 10, 'G9' => 'Total (lump sum)'],
+            template: base_path('tests/Feature/form-builder-template-v1.xlsx'),
+        );
+
+        $preview = $this->preview($project, $file)->assertOk()
+            ->assertJsonPath('groups', [['name' => 'Kelistrikan', 'item_count' => 1]]);
+        $this->applyImport($project, $file, $preview->json('preview_token'))->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('engineering_estimate_lines', ['description' => 'Kabel', 'source_reference' => 'Item Pekerjaan!B9:I9']);
+    }
+
     private function createProject(?User $owner = null): int
     {
         $this->actingAs($owner ?? User::factory()->create());
@@ -250,19 +325,33 @@ class FormBuilderImportTest extends TestCase
 
     private function validWorkbook(int $price = 10): UploadedFile
     {
-        return $this->workbook(['B9' => 'Kelistrikan', 'C9' => 'Kabel', 'F9' => $price, 'G9' => 'Total (lump sum)']);
+        return $this->workbook(['B9' => 'Kelistrikan', 'D9' => 'Kabel', 'G9' => $price, 'H9' => 'Total (lump sum)']);
     }
 
-    /** @param  array<string, string|int|float|null>  $cells */
-    private function workbook(array $cells): UploadedFile
+    /**
+     * @param  array<string, string|int|float|null>  $cells
+     * @param  array<string, string|int|float|null>  $blocks  Cells of the Blok Konstruksi sheet.
+     */
+    private function workbook(array $cells, array $blocks = [], string $template = ''): UploadedFile
     {
         $path = tempnam(sys_get_temp_dir(), 'form-builder-');
         $this->assertNotFalse($path);
         $this->workbookPaths[] = $path;
-        $this->assertTrue(copy(resource_path('form-builder-template.xlsx'), $path));
+        $this->assertTrue(copy($template ?: resource_path('form-builder-template.xlsx'), $path));
         $zip = new ZipArchive;
         $this->assertTrue($zip->open($path));
-        $part = 'xl/worksheets/sheet1.xml';
+        $this->fillSheet($zip, 'xl/worksheets/sheet1.xml', $cells);
+        if ($blocks !== []) {
+            $this->fillSheet($zip, 'xl/worksheets/sheet2.xml', $blocks);
+        }
+        $this->assertTrue($zip->close());
+
+        return new UploadedFile($path, 'Rencana Kerja.xlsx', test: true);
+    }
+
+    /** @param  array<string, string|int|float|null>  $cells */
+    private function fillSheet(ZipArchive $zip, string $part, array $cells): void
+    {
         $document = new DOMDocument;
         $this->assertTrue($document->loadXML($zip->getFromName($part)));
         $namespace = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -298,8 +387,5 @@ class FormBuilderImportTest extends TestCase
             }
         }
         $zip->addFromString($part, $document->saveXML());
-        $this->assertTrue($zip->close());
-
-        return new UploadedFile($path, 'Rencana Kerja.xlsx', test: true);
     }
 }
