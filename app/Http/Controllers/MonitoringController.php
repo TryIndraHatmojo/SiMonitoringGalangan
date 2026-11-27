@@ -39,6 +39,7 @@ class MonitoringController extends Controller
     public function index(Request $request): Response
     {
         $section = $request->route('section') ?? 'ringkasan';
+        $tab = $request->query('tab') === 'periode' ? 'periode' : 'realisasi';
         $projects = $this->owned($request)->orderBy('name')->get(['id', 'name']);
         $project = $request->filled('project') ? $this->owned($request)->where('id', $request->integer('project'))->firstOrFail() : $this->owned($request)->first();
         if ($project) {
@@ -107,7 +108,7 @@ class MonitoringController extends Controller
             }
         }
 
-        return Inertia::render('dashboard', compact('projects', 'project', 'draft', 'period', 'history', 'section', 'report', 'estimate', 'estimateWeights', 'bac', 'hasEstimate', 'canImportFormBuilder') + ['revision' => $baseline->revision ?? 0]);
+        return Inertia::render('dashboard', compact('projects', 'project', 'draft', 'period', 'history', 'section', 'tab', 'report', 'estimate', 'estimateWeights', 'bac', 'hasEstimate', 'canImportFormBuilder') + ['revision' => $baseline->revision ?? 0]);
     }
 
     public function downloadFormBuilderTemplate(): BinaryFileResponse
@@ -470,7 +471,7 @@ class MonitoringController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Periode laporan dihapus.']);
 
-        return to_route('workspace', ['section' => 'input', 'project' => $project]);
+        return to_route('workspace', ['section' => 'input', 'project' => $project, 'tab' => 'periode']);
     }
 
     private function ensurePeriodRangeAvailable(int $project, string $start, string $end, ?int $ignore = null): void

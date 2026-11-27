@@ -238,6 +238,11 @@ class MonitoringTest extends TestCase
             ->where('history.0.measurement_count', 1)
             ->where('history.1.measurement_count', 0));
 
+        foreach (['periode' => 'periode', 'asing' => 'realisasi', '' => 'realisasi'] as $query => $tab) {
+            $this->get(route('workspace', ['section' => 'input', 'project' => $project, 'tab' => $query]))
+                ->assertInertia(fn (Assert $page) => $page->where('tab', $tab));
+        }
+
         $this->patch($update, ['close' => true])->assertSessionHasNoErrors();
         $this->delete($destroy)->assertSessionHasErrors('period');
         $this->assertDatabaseHas('report_periods', ['id' => $period]);
@@ -246,7 +251,7 @@ class MonitoringTest extends TestCase
 
         $this->actingAs(User::factory()->create())->delete($destroy)->assertNotFound();
         $this->actingAs($owner)->delete($destroy)
-            ->assertRedirectToRoute('workspace', ['section' => 'input', 'project' => $project]);
+            ->assertRedirectToRoute('workspace', ['section' => 'input', 'project' => $project, 'tab' => 'periode']);
         $this->assertDatabaseMissing('report_periods', ['id' => $period]);
         $this->assertDatabaseMissing('measurements', ['period_id' => $period]);
         $this->assertDatabaseCount('report_periods', 1);

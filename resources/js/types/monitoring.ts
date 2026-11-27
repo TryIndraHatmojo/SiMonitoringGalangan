@@ -85,6 +85,7 @@ export type Monitoring = {
     bac: string | null;
     revision: number;
     section: string;
+    tab: 'realisasi' | 'periode';
     period: Period | null;
     history: Period[];
     report: {

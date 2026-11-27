@@ -7,14 +7,13 @@ import { Input } from '@/components/ui/input';
 import { History } from '@/components/progress-history';
 import {
     DateField,
-    PeriodLabelField,
+    PeriodTabs,
     ReportPeriodList,
     reopenPeriod,
-    targetPlaceholder,
 } from '@/components/report-period-list';
 import { WbsEditor } from '@/components/wbs-editor';
 import { workspace } from '@/routes';
-import { store, period as createPeriod, edit, update } from '@/routes/projects';
+import { store, edit, update } from '@/routes/projects';
 import {
     money,
     percent,
@@ -117,7 +116,7 @@ function WorkDetail({
     return (
         <>
             <section>
-                <h2>Pilih pekerjaan</h2>
+                <h2>{editing ? '2. ' : ''}Pilih pekerjaan</h2>
                 <div className="grid items-start gap-4 sm:grid-cols-2">
                     <div className="grid min-w-0 gap-1.5">
                         <label htmlFor="work-group">Kelompok pekerjaan</label>
@@ -155,7 +154,10 @@ function WorkDetail({
                 </div>
             </section>
             <section>
-                <small>{group.name}</small>
+                <small>
+                    {editing ? '3. Isi realisasi · ' : ''}
+                    {group.name}
+                </small>
                 <h2>{item.name}</h2>
                 <p>Bobot dalam kelompok {percent(item.group_weight, '%', 6)}</p>
                 <p>Bobot dalam proyek {percent(item.weight, '%', 6)}</p>
@@ -271,6 +273,9 @@ function WorkDetail({
 export default function Dashboard(props: Monitoring) {
     const { project, projects, section, period, revision, history, report } =
         props;
+    const managingPeriods = section === 'input' && props.tab === 'periode';
+    const tab = managingPeriods ? 'periode' : 'realisasi';
+    const PeriodFrame = section === 'input' ? 'section' : 'div';
     const { errors } = usePage().props;
     const pageErrors = Object.entries(errors).filter(
         ([, message]) => typeof message === 'string',
@@ -342,260 +347,274 @@ export default function Dashboard(props: Monitoring) {
                     />
                 ) : (
                     <>
-                        {history.length > 0 && (
-                            <div className="flex flex-wrap items-end gap-4">
-                                <div className="grid w-full min-w-0 gap-1.5 sm:w-56">
-                                    <label htmlFor="report-period">
-                                        Periode laporan
-                                    </label>
-                                    <Combobox
-                                        id="report-period"
-                                        label="Periode laporan"
-                                        value={String(
-                                            period?.id ?? history[0]?.id ?? '',
-                                        )}
-                                        onValueChange={(value) =>
-                                            router.visit(
-                                                workspace(section, {
-                                                    query: {
-                                                        project: project.id,
-                                                        period: value,
-                                                    },
-                                                }),
-                                            )
-                                        }
-                                        options={history.map(
-                                            ({ id, start, end }) => ({
-                                                value: String(id),
-                                                label: `${start} s.d. ${end}`,
-                                            }),
-                                        )}
-                                    />
-                                </div>
-                                <p>
-                                    Revisi {period?.revision} :{' '}
-                                    {period?.closed_at ? 'Ditutup' : 'Terbuka'},{' '}
-                                    {report.measured}/{report.expected} tahap
-                                    diukur{period?.partial ? ', Parsial' : ''}
-                                </p>
-                                {period?.is_simulated && (
-                                    <p>Realisasi tahap simulasi</p>
-                                )}
-                                {period?.reported_actual != null && (
-                                    <p>Realisasi dari ringkasan proyek</p>
-                                )}
-                            </div>
-                        )}
                         {section === 'input' && (
-                            <section>
-                                <details open={!history.length}>
-                                    <summary className="cursor-pointer font-semibold">
-                                        Buat periode laporan
-                                    </summary>
-                                    {revision ? (
-                                        <Form
-                                            {...createPeriod.form(project.id)}
-                                            errorBag="createPeriod"
-                                            className="mt-4 grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-4"
-                                        >
-                                            {({ errors, processing }) => (
-                                                <>
-                                                    <DateField
-                                                        name="start"
-                                                        label="Mulai"
-                                                        example="30 September 2020"
-                                                        error={errors.start}
-                                                    />
-                                                    <DateField
-                                                        name="end"
-                                                        label="Sampai"
-                                                        example="6 Oktober 2020"
-                                                        error={errors.end}
-                                                    />
-                                                    <label>
-                                                        Target kumulatif (%)
-                                                        <Input
-                                                            type="number"
-                                                            step="0.0001"
-                                                            min="0"
-                                                            max="100"
-                                                            name="target"
-                                                            placeholder={
-                                                                targetPlaceholder
-                                                            }
-                                                        />
-                                                    </label>
-                                                    <PeriodLabelField
-                                                        error={errors.label}
-                                                    />
-                                                    <Button
-                                                        className="justify-self-start"
-                                                        disabled={processing}
-                                                    >
-                                                        Buat periode
-                                                    </Button>
-                                                </>
-                                            )}
-                                        </Form>
-                                    ) : (
-                                        <p>
-                                            Tetapkan baseline terlebih dahulu.
-                                        </p>
-                                    )}
-                                </details>
-                            </section>
+                            <PeriodTabs
+                                project={project.id}
+                                period={period?.id}
+                                active={tab}
+                            />
                         )}
-                        {section === 'input' && (
+                        {managingPeriods ? (
                             <ReportPeriodList
                                 key={project.id}
                                 project={project.id}
                                 periods={history}
                                 selected={period?.id}
+                                canCreate={!!revision}
                             />
-                        )}
-                        {section === 'ringkasan' ? (
-                            <>
-                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                    {[
-                                        [
-                                            'Realisasi fisik',
-                                            percent(report.actual),
-                                        ],
-                                        [
-                                            'Target rencana',
-                                            percent(period?.target),
-                                        ],
-                                        [
-                                            'Deviasi jadwal',
-                                            percent(period?.deviation, ' pp'),
-                                        ],
-                                        [
-                                            'Engineering Estimate (BAC)',
-                                            props.bac == null
-                                                ? 'Belum ada data'
-                                                : money(props.bac),
-                                        ],
-                                    ].map(([label, value]) => (
-                                        <section key={label}>
-                                            <p>{label}</p>
-                                            <strong className="text-xl">
-                                                {value}
-                                            </strong>
-                                        </section>
-                                    ))}
-                                </div>
-                                <History history={history} />
-                                <section>
-                                    <h2>Kelompok pekerjaan</h2>
-                                    {report.groups.length ? (
-                                        <table>
-                                            <thead>
-                                                <tr>
-                                                    <th>Kelompok</th>
-                                                    <th>Bobot proyek</th>
-                                                    <th>Realisasi kelompok</th>
-                                                    <th>Kontribusi proyek</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {report.groups.map((g) => (
-                                                    <tr key={g.id}>
-                                                        <td>
-                                                            <Link
-                                                                className="font-medium text-primary"
-                                                                href={workspace(
-                                                                    'wbs',
-                                                                    {
-                                                                        query: {
-                                                                            project:
-                                                                                project.id,
-                                                                            period: period?.id,
-                                                                            group: g.id,
-                                                                        },
-                                                                    },
-                                                                )}
-                                                            >
-                                                                {g.name}
-                                                            </Link>
-                                                        </td>
-                                                        <td>
-                                                            {percent(
-                                                                g.weight,
-                                                                '%',
-                                                                6,
-                                                            )}
-                                                        </td>
-                                                        <td>
-                                                            {percent(
-                                                                g.progress,
-                                                            )}
-                                                        </td>
-                                                        <td>
-                                                            {percent(
-                                                                g.contribution,
-                                                                ' pp',
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    ) : (
-                                        <Link
-                                            href={workspace('builder', {
-                                                query: { project: project.id },
-                                            })}
-                                        >
-                                            Susun struktur pekerjaan
-                                        </Link>
-                                    )}
-                                </section>
-                            </>
                         ) : (
-                            <WorkDetail
-                                key={[
-                                    project.id,
-                                    period?.id,
-                                    section,
-                                    new URLSearchParams(
-                                        typeof window === 'undefined'
-                                            ? ''
-                                            : window.location.search,
-                                    ).get('group'),
-                                ].join('-')}
-                                groups={report.groups}
-                                project={project.id}
-                                period={period}
-                                editing={section === 'input'}
-                            />
-                        )}
-                        {section === 'input' && period && (
-                            <div>
-                                <Button
-                                    variant="outline"
-                                    onClick={() => {
-                                        if (period.closed_at) {
-                                            reopenPeriod(project.id, period);
-                                        } else if (
-                                            window.confirm(
-                                                'Tutup periode ini? Realisasi, tanggal, target, dan label periode akan dikunci.',
-                                            )
-                                        ) {
-                                            router.patch(
-                                                update.url([
-                                                    project.id,
-                                                    period.id,
-                                                ]),
-                                                { close: true },
-                                            );
-                                        }
-                                    }}
-                                >
-                                    {period.closed_at
-                                        ? 'Buka kembali periode'
-                                        : 'Tutup periode'}
-                                </Button>
-                            </div>
+                            <>
+                                {section === 'input' && !history.length && (
+                                    <section>
+                                        <h2>Belum ada periode laporan</h2>
+                                        <p>
+                                            Buat periode terlebih dahulu untuk
+                                            mengisi realisasi.
+                                        </p>
+                                        <Button asChild>
+                                            <Link
+                                                href={workspace('input', {
+                                                    query: {
+                                                        project: project.id,
+                                                        tab: 'periode',
+                                                    },
+                                                })}
+                                            >
+                                                Buka Kelola Periode
+                                            </Link>
+                                        </Button>
+                                    </section>
+                                )}
+                                {history.length > 0 && (
+                                    <PeriodFrame className="flex flex-wrap items-end gap-4">
+                                        {section === 'input' && (
+                                            <h2 className="w-full">
+                                                1. Periode laporan
+                                            </h2>
+                                        )}
+                                        <div className="grid w-full min-w-0 gap-1.5 sm:w-56">
+                                            <label htmlFor="report-period">
+                                                Periode laporan
+                                            </label>
+                                            <Combobox
+                                                id="report-period"
+                                                label="Periode laporan"
+                                                value={String(
+                                                    period?.id ??
+                                                        history[0]?.id ??
+                                                        '',
+                                                )}
+                                                onValueChange={(value) =>
+                                                    router.visit(
+                                                        workspace(section, {
+                                                            query: {
+                                                                project:
+                                                                    project.id,
+                                                                period: value,
+                                                            },
+                                                        }),
+                                                    )
+                                                }
+                                                options={history.map(
+                                                    ({ id, start, end }) => ({
+                                                        value: String(id),
+                                                        label: `${start} s.d. ${end}`,
+                                                    }),
+                                                )}
+                                            />
+                                        </div>
+                                        <p>
+                                            Revisi {period?.revision} :{' '}
+                                            {period?.closed_at
+                                                ? 'Ditutup'
+                                                : 'Terbuka'}
+                                            , {report.measured}/
+                                            {report.expected} tahap diukur
+                                            {period?.partial ? ', Parsial' : ''}
+                                        </p>
+                                        {period?.is_simulated && (
+                                            <p>Realisasi tahap simulasi</p>
+                                        )}
+                                        {period?.reported_actual != null && (
+                                            <p>
+                                                Realisasi dari ringkasan proyek
+                                            </p>
+                                        )}
+                                        {section === 'input' && period && (
+                                            <>
+                                                <Button
+                                                    className="ml-auto"
+                                                    variant="outline"
+                                                    onClick={() => {
+                                                        if (period.closed_at) {
+                                                            reopenPeriod(
+                                                                project.id,
+                                                                period,
+                                                            );
+                                                        } else if (
+                                                            window.confirm(
+                                                                'Tutup periode ini? Realisasi, tanggal, target, dan label periode akan dikunci.',
+                                                            )
+                                                        ) {
+                                                            router.patch(
+                                                                update.url([
+                                                                    project.id,
+                                                                    period.id,
+                                                                ]),
+                                                                { close: true },
+                                                            );
+                                                        }
+                                                    }}
+                                                >
+                                                    {period.closed_at
+                                                        ? 'Buka kembali periode'
+                                                        : 'Tutup periode'}
+                                                </Button>
+                                                {period.closed_at && (
+                                                    <p className="w-full">
+                                                        Periode ditutup. Buka
+                                                        kembali untuk mengubah
+                                                        realisasi.
+                                                    </p>
+                                                )}
+                                            </>
+                                        )}
+                                    </PeriodFrame>
+                                )}
+                                {section === 'ringkasan' ? (
+                                    <>
+                                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                            {[
+                                                [
+                                                    'Realisasi fisik',
+                                                    percent(report.actual),
+                                                ],
+                                                [
+                                                    'Target rencana',
+                                                    percent(period?.target),
+                                                ],
+                                                [
+                                                    'Deviasi jadwal',
+                                                    percent(
+                                                        period?.deviation,
+                                                        ' pp',
+                                                    ),
+                                                ],
+                                                [
+                                                    'Engineering Estimate (BAC)',
+                                                    props.bac == null
+                                                        ? 'Belum ada data'
+                                                        : money(props.bac),
+                                                ],
+                                            ].map(([label, value]) => (
+                                                <section key={label}>
+                                                    <p>{label}</p>
+                                                    <strong className="text-xl">
+                                                        {value}
+                                                    </strong>
+                                                </section>
+                                            ))}
+                                        </div>
+                                        <History history={history} />
+                                        <section>
+                                            <h2>Kelompok pekerjaan</h2>
+                                            {report.groups.length ? (
+                                                <table>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Kelompok</th>
+                                                            <th>
+                                                                Bobot proyek
+                                                            </th>
+                                                            <th>
+                                                                Realisasi
+                                                                kelompok
+                                                            </th>
+                                                            <th>
+                                                                Kontribusi
+                                                                proyek
+                                                            </th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {report.groups.map(
+                                                            (g) => (
+                                                                <tr key={g.id}>
+                                                                    <td>
+                                                                        <Link
+                                                                            className="font-medium text-primary"
+                                                                            href={workspace(
+                                                                                'wbs',
+                                                                                {
+                                                                                    query: {
+                                                                                        project:
+                                                                                            project.id,
+                                                                                        period: period?.id,
+                                                                                        group: g.id,
+                                                                                    },
+                                                                                },
+                                                                            )}
+                                                                        >
+                                                                            {
+                                                                                g.name
+                                                                            }
+                                                                        </Link>
+                                                                    </td>
+                                                                    <td>
+                                                                        {percent(
+                                                                            g.weight,
+                                                                            '%',
+                                                                            6,
+                                                                        )}
+                                                                    </td>
+                                                                    <td>
+                                                                        {percent(
+                                                                            g.progress,
+                                                                        )}
+                                                                    </td>
+                                                                    <td>
+                                                                        {percent(
+                                                                            g.contribution,
+                                                                            ' pp',
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            ),
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            ) : (
+                                                <Link
+                                                    href={workspace('builder', {
+                                                        query: {
+                                                            project: project.id,
+                                                        },
+                                                    })}
+                                                >
+                                                    Susun struktur pekerjaan
+                                                </Link>
+                                            )}
+                                        </section>
+                                    </>
+                                ) : section === 'input' && !period ? null : (
+                                    <WorkDetail
+                                        key={[
+                                            project.id,
+                                            period?.id,
+                                            section,
+                                            new URLSearchParams(
+                                                typeof window === 'undefined'
+                                                    ? ''
+                                                    : window.location.search,
+                                            ).get('group'),
+                                        ].join('-')}
+                                        groups={report.groups}
+                                        project={project.id}
+                                        period={period}
+                                        editing={section === 'input'}
+                                    />
+                                )}
+                            </>
                         )}
                     </>
                 )}

@@ -2,13 +2,21 @@ import { Form, Link, router } from '@inertiajs/react';
 import { useId, useState } from 'react';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { workspace } from '@/routes';
-import { update } from '@/routes/projects';
+import { period as createPeriod, update } from '@/routes/projects';
 import { destroy } from '@/routes/projects/periods';
 import { percent, type Period } from '@/types/monitoring';
 
-export const targetPlaceholder = '98.5';
+const targetPlaceholder = '98.5';
 
 export function DateField({
     name,
@@ -48,7 +56,7 @@ export function DateField({
     );
 }
 
-export function PeriodLabelField({
+function PeriodLabelField({
     value,
     error,
 }: {
@@ -107,6 +115,116 @@ function deletePeriod(project: number, period: Period): void {
     ) {
         router.delete(destroy.url([project, period.id]));
     }
+}
+
+export function PeriodTabs({
+    project,
+    period,
+    active,
+}: {
+    project: number;
+    period?: number;
+    active: 'realisasi' | 'periode';
+}) {
+    return (
+        <nav aria-label="Menu input progres" className="flex gap-4 border-b">
+            {(
+                [
+                    ['realisasi', 'Isi Realisasi'],
+                    ['periode', 'Kelola Periode'],
+                ] as const
+            ).map(([tab, label]) => (
+                <Link
+                    key={tab}
+                    href={workspace('input', {
+                        query: { project, period, tab },
+                    })}
+                    preserveScroll
+                    aria-current={tab === active ? 'page' : undefined}
+                    className={`-mb-px border-b-2 px-1 py-2 text-sm font-medium ${
+                        tab === active
+                            ? 'border-primary text-foreground'
+                            : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                    {label}
+                </Link>
+            ))}
+        </nav>
+    );
+}
+
+function CreatePeriodDialog({
+    project,
+    disabled,
+}: {
+    project: number;
+    disabled: boolean;
+}) {
+    const [open, setOpen] = useState(false);
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button type="button" disabled={disabled}>
+                    Buat periode
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>Buat periode laporan</DialogTitle>
+                    <DialogDescription>
+                        Tentukan rentang tanggal yang belum dipakai periode
+                        lain.
+                    </DialogDescription>
+                </DialogHeader>
+                <Form
+                    {...createPeriod.form(project)}
+                    errorBag="createPeriod"
+                    onSuccess={() => setOpen(false)}
+                    className="monitoring grid items-start gap-3 sm:grid-cols-2"
+                >
+                    {({ errors, processing }) => (
+                        <>
+                            <DateField
+                                name="start"
+                                label="Mulai"
+                                example="30 September 2020"
+                                error={errors.start}
+                            />
+                            <DateField
+                                name="end"
+                                label="Sampai"
+                                example="6 Oktober 2020"
+                                error={errors.end}
+                            />
+                            <div className="grid gap-1">
+                                <label>
+                                    Target kumulatif (%)
+                                    <Input
+                                        type="number"
+                                        step="0.0001"
+                                        min="0"
+                                        max="100"
+                                        name="target"
+                                        placeholder={targetPlaceholder}
+                                    />
+                                </label>
+                                <InputError message={errors.target} />
+                            </div>
+                            <PeriodLabelField error={errors.label} />
+                            <Button
+                                className="justify-self-start"
+                                disabled={processing}
+                            >
+                                Simpan periode baru
+                            </Button>
+                        </>
+                    )}
+                </Form>
+            </DialogContent>
+        </Dialog>
+    );
 }
 
 function EditPeriodForm({
@@ -175,16 +293,22 @@ export function ReportPeriodList({
     project,
     periods,
     selected,
+    canCreate,
 }: {
     project: number;
     periods: Period[];
     selected?: number;
+    canCreate: boolean;
 }) {
     const [editing, setEditing] = useState<number | null>(null);
 
     return (
         <section>
-            <h2>Daftar periode laporan</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2>Daftar periode laporan</h2>
+                <CreatePeriodDialog project={project} disabled={!canCreate} />
+            </div>
+            {!canCreate && <p>Tetapkan baseline terlebih dahulu.</p>}
             {periods.length === 0 ? (
                 <p>Belum ada periode laporan.</p>
             ) : (
@@ -255,7 +379,7 @@ export function ReportPeriodList({
                                                             },
                                                         )}
                                                     >
-                                                        Pilih
+                                                        Isi realisasi
                                                     </Link>
                                                 </Button>
                                                 {period.closed_at ? (
