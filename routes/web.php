@@ -22,5 +22,6 @@ Route::middleware(['auth', 'verified'])->controller(MonitoringController::class)
     Route::post('projects/{project}/form-builder/import', 'applyFormBuilderImport')->whereNumber('project')->name('projects.formBuilderImport.apply');
     Route::post('projects/{project}/periods', 'period')->name('projects.period');
     Route::patch('projects/{project}/periods/{period}', 'update')->name('projects.update');
+    Route::delete('projects/{project}/periods/{period}', 'destroyPeriod')->whereNumber(['project', 'period'])->name('projects.periods.destroy');
 });
 require __DIR__.'/settings.php';

@@ -42,6 +42,7 @@ export type Period = {
     is_simulated: boolean;
     partial: boolean;
     deviation: number | null;
+    measurement_count: number;
 };
 export type EstimateLineInput = {
     id: number;

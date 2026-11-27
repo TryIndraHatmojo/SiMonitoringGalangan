@@ -61,6 +61,7 @@ class MonitoringController extends Controller
                 $entry['actual'] = (float) $row->reported_actual;
             }
             $row->actual = $entry['actual'];
+            $row->measurement_count = $records->get($row->id, collect())->count();
             $row->axis_label = filled($row->label) ? $row->label : $row->end;
             $row->is_simulated = (bool) $row->is_simulated;
             $row->partial = $row->reported_actual === null && $entry['measured'] < $entry['expected'];
@@ -398,9 +399,10 @@ class MonitoringController extends Controller
         $id = DB::transaction(function () use ($request, $project, $data) {
             $this->owned($request)->lockForUpdate()->where('id', $project)->firstOrFail();
             $baseline = DB::table('baselines')->where('project_id', $project)->orderByDesc('revision')->value('id');
-            if (! $baseline || $this->periods($project)->where('p.start', '<=', $data['end'])->where('p.end', '>=', $data['start'])->exists()) {
-                throw ValidationException::withMessages(['start' => 'Tetapkan baseline dan pilih rentang yang belum digunakan.']);
+            if (! $baseline) {
+                throw ValidationException::withMessages(['start' => 'Tetapkan baseline terlebih dahulu.']);
             }
+            $this->ensurePeriodRangeAvailable($project, $data['start'], $data['end']);
 
             return DB::table('report_periods')->insertGetId($data + ['baseline_id' => $baseline]);
         });
@@ -413,6 +415,11 @@ class MonitoringController extends Controller
         DB::transaction(function () use ($request, $project, $period) {
             $this->owned($request)->lockForUpdate()->where('id', $project)->firstOrFail();
             $report = $this->periods($project)->where('p.id', $period)->firstOrFail();
+            if ($request->boolean('reopen')) {
+                DB::table('report_periods')->where('id', $period)->update(['closed_at' => null]);
+
+                return;
+            }
             if ($report->closed_at) {
                 throw ValidationException::withMessages(['period' => 'Periode telah ditutup.']);
             }
@@ -421,11 +428,15 @@ class MonitoringController extends Controller
 
                 return;
             }
-            if ($request->hasAny(['label', 'target'])) {
+            if ($request->hasAny(['start', 'end', 'label', 'target'])) {
+                $request->mergeIfMissing(['start' => $report->start, 'end' => $report->end]);
                 $data = $request->validate([
+                    'start' => 'required|date_format:Y-m-d',
+                    'end' => 'required|date_format:Y-m-d|after_or_equal:start',
                     'label' => self::PERIOD_LABEL_RULE,
                     'target' => 'nullable|numeric|between:0,100|decimal:0,4',
                 ]);
+                $this->ensurePeriodRangeAvailable($project, $data['start'], $data['end'], $period);
                 DB::table('report_periods')->where('id', $period)->update($data);
 
                 return;
@@ -445,5 +456,31 @@ class MonitoringController extends Controller
         });
 
         return back();
+    }
+
+    public function destroyPeriod(Request $request, int $project, int $period): RedirectResponse
+    {
+        DB::transaction(function () use ($request, $project, $period): void {
+            $this->owned($request)->lockForUpdate()->where('id', $project)->firstOrFail();
+            if ($this->periods($project)->where('p.id', $period)->firstOrFail()->closed_at) {
+                throw ValidationException::withMessages(['period' => 'Buka kembali periode sebelum menghapus.']);
+            }
+            DB::table('report_periods')->where('id', $period)->delete();
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Periode laporan dihapus.']);
+
+        return to_route('workspace', ['section' => 'input', 'project' => $project]);
+    }
+
+    private function ensurePeriodRangeAvailable(int $project, string $start, string $end, ?int $ignore = null): void
+    {
+        $overlapping = $this->periods($project)->where('p.start', '<=', $end)->where('p.end', '>=', $start);
+        if ($ignore !== null) {
+            $overlapping->where('p.id', '!=', $ignore);
+        }
+        if ($overlapping->exists()) {
+            throw ValidationException::withMessages(['start' => 'Pilih rentang tanggal yang belum digunakan periode lain.']);
+        }
     }
 }

@@ -1,11 +1,17 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { useId, useState } from 'react';
 import { EstimateEditor } from '@/components/estimate-editor';
-import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { History } from '@/components/progress-history';
+import {
+    DateField,
+    PeriodLabelField,
+    ReportPeriodList,
+    reopenPeriod,
+    targetPlaceholder,
+} from '@/components/report-period-list';
 import { WbsEditor } from '@/components/wbs-editor';
 import { workspace } from '@/routes';
 import { store, period as createPeriod, edit, update } from '@/routes/projects';
@@ -17,70 +23,6 @@ import {
     type Group,
     type Period,
 } from '@/types/monitoring';
-
-const targetPlaceholder = '98.5';
-
-function DateField({
-    name,
-    label,
-    example,
-}: {
-    name: 'start' | 'end';
-    label: string;
-    example: string;
-}) {
-    const hintId = useId();
-
-    return (
-        <div className="grid gap-1">
-            <label>
-                {label}
-                <Input
-                    name={name}
-                    required
-                    type="date"
-                    aria-describedby={hintId}
-                />
-            </label>
-            <span id={hintId} className="text-xs text-muted-foreground">
-                Mis. {example}
-            </span>
-        </div>
-    );
-}
-
-function PeriodLabelField({
-    value,
-    error,
-}: {
-    value?: string | null;
-    error?: string;
-}) {
-    const id = useId();
-    const hintId = id + '-hint';
-    const errorId = id + '-error';
-
-    return (
-        <div className="grid w-full max-w-sm gap-1">
-            <label htmlFor={id}>Label periode (opsional)</label>
-            <Input
-                id={id}
-                name="label"
-                type="text"
-                defaultValue={value ?? ''}
-                maxLength={40}
-                placeholder="Mis. Minggu 14"
-                aria-invalid={!!error}
-                aria-describedby={error ? hintId + ' ' + errorId : hintId}
-            />
-            <span id={hintId} className="text-xs text-muted-foreground">
-                Label ini tampil pada sumbu X S Curve. Jika dikosongkan, grafik
-                menampilkan tanggal akhir periode.
-            </span>
-            <InputError id={errorId} message={error} />
-        </div>
-    );
-}
 
 function ProjectForm({ projects }: Pick<Monitoring, 'projects'>) {
     const [source, setSource] = useState('');
@@ -288,7 +230,9 @@ function WorkDetail({
                                                 max="100"
                                                 step="0.0001"
                                                 aria-label={s.name}
-                                                aria-describedby={realizationHintId}
+                                                aria-describedby={
+                                                    realizationHintId
+                                                }
                                                 name={s.id}
                                                 defaultValue={
                                                     item.values?.[s.id] ?? ''
@@ -328,6 +272,9 @@ export default function Dashboard(props: Monitoring) {
     const { project, projects, section, period, revision, history, report } =
         props;
     const { errors } = usePage().props;
+    const pageErrors = Object.entries(errors).filter(
+        ([, message]) => typeof message === 'string',
+    );
     const create = section === 'baru' || !project;
     const title = create
         ? 'Buat proyek kapal'
@@ -361,12 +308,12 @@ export default function Dashboard(props: Monitoring) {
                         </span>
                     )}
                 </header>
-                {section !== 'estimasi' && Object.keys(errors).length > 0 && (
+                {section !== 'estimasi' && pageErrors.length > 0 && (
                     <div
                         role="alert"
                         className="rounded border border-destructive/30 bg-destructive/10 p-3 text-destructive-foreground"
                     >
-                        {Object.entries(errors).map(([k, v]) => (
+                        {pageErrors.map(([k, v]) => (
                             <div key={k}>
                                 {k}: {String(v)}
                             </div>
@@ -457,11 +404,13 @@ export default function Dashboard(props: Monitoring) {
                                                         name="start"
                                                         label="Mulai"
                                                         example="30 September 2020"
+                                                        error={errors.start}
                                                     />
                                                     <DateField
                                                         name="end"
                                                         label="Sampai"
                                                         example="6 Oktober 2020"
+                                                        error={errors.end}
                                                     />
                                                     <label>
                                                         Target kumulatif (%)
@@ -495,6 +444,14 @@ export default function Dashboard(props: Monitoring) {
                                     )}
                                 </details>
                             </section>
+                        )}
+                        {section === 'input' && (
+                            <ReportPeriodList
+                                key={project.id}
+                                project={project.id}
+                                periods={history}
+                                selected={period?.id}
+                            />
                         )}
                         {section === 'ringkasan' ? (
                             <>
@@ -612,54 +569,18 @@ export default function Dashboard(props: Monitoring) {
                                 editing={section === 'input'}
                             />
                         )}
-                        {section === 'input' && period && !period.closed_at && (
-                            <section className="flex flex-wrap items-start justify-between gap-4">
-                                <Form
-                                    key={period.id}
-                                    {...update.form([project.id, period.id])}
-                                    errorBag="updatePeriod"
-                                    className="grid items-start gap-3 sm:grid-cols-2"
-                                >
-                                    {({ errors, processing }) => (
-                                        <>
-                                            <label>
-                                                Target kumulatif (%)
-                                                <Input
-                                                    name="target"
-                                                    type="number"
-                                                    min="0"
-                                                    max="100"
-                                                    step="0.0001"
-                                                    defaultValue={
-                                                        period.target ?? ''
-                                                    }
-                                                    placeholder={
-                                                        targetPlaceholder
-                                                    }
-                                                />
-                                            </label>
-                                            <PeriodLabelField
-                                                value={period.label}
-                                                error={errors.label}
-                                            />
-                                            <Button
-                                                className="justify-self-start"
-                                                variant="outline"
-                                                disabled={processing}
-                                            >
-                                                Simpan periode
-                                            </Button>
-                                        </>
-                                    )}
-                                </Form>
+                        {section === 'input' && period && (
+                            <div>
                                 <Button
                                     variant="outline"
                                     onClick={() => {
-                                        if (
+                                        if (period.closed_at) {
+                                            reopenPeriod(project.id, period);
+                                        } else if (
                                             window.confirm(
-                                                'Tutup periode ini? Realisasi, target, dan label periode akan dikunci.',
+                                                'Tutup periode ini? Realisasi, tanggal, target, dan label periode akan dikunci.',
                                             )
-                                        )
+                                        ) {
                                             router.patch(
                                                 update.url([
                                                     project.id,
@@ -667,11 +588,14 @@ export default function Dashboard(props: Monitoring) {
                                                 ]),
                                                 { close: true },
                                             );
+                                        }
                                     }}
                                 >
-                                    Tutup periode
+                                    {period.closed_at
+                                        ? 'Buka kembali periode'
+                                        : 'Tutup periode'}
                                 </Button>
-                            </section>
+                            </div>
                         )}
                     </>
                 )}

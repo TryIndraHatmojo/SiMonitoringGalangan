@@ -210,4 +210,45 @@ class MonitoringTest extends TestCase
         $this->patch($update, ['close' => true])->assertSessionHasNoErrors();
         $this->patch($update, ['label' => 'Minggu 1'])->assertSessionHasErrors('period');
     }
+
+    public function test_report_periods_can_be_rescheduled_reopened_and_deleted(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $project = $this->vessel('Tug');
+        $item = $this->row('Lambung', 100);
+        $stage = $this->row('Persiapan', 100);
+        $group = ['id' => (string) Str::uuid(), 'name' => 'Pengecatan', 'items' => [$item], 'stages' => [$stage]];
+        $this->put(route('projects.structure', $project), ['groups' => [$group], 'publish' => true])->assertSessionHasNoErrors();
+        $create = route('projects.period', $project);
+        $this->post($create, ['start' => '2026-01-01', 'end' => '2026-01-07'])->assertSessionHasNoErrors();
+        $this->post($create, ['start' => '2026-01-08', 'end' => '2026-01-14'])->assertSessionHasNoErrors();
+        $period = DB::table('report_periods')->where('end', '2026-01-07')->value('id');
+        $update = route('projects.update', [$project, $period]);
+        $destroy = route('projects.periods.destroy', [$project, $period]);
+
+        $this->patch($update, ['start' => '2026-01-02', 'end' => '2026-01-06'])->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('report_periods', ['id' => $period, 'start' => '2026-01-02', 'end' => '2026-01-06']);
+        $this->patch($update, ['end' => '2026-01-08'])->assertSessionHasErrors('start');
+        $this->patch($update, ['end' => '2026-01-01'])->assertSessionHasErrors('end');
+        $this->assertDatabaseHas('report_periods', ['id' => $period, 'start' => '2026-01-02', 'end' => '2026-01-06']);
+
+        $this->patch($update, ['item' => $item['id'], 'values' => [$stage['id'] => 15]])->assertSessionHasNoErrors();
+        $this->get(route('workspace', ['section' => 'input', 'project' => $project]))->assertInertia(fn (Assert $page) => $page
+            ->where('history.0.measurement_count', 1)
+            ->where('history.1.measurement_count', 0));
+
+        $this->patch($update, ['close' => true])->assertSessionHasNoErrors();
+        $this->delete($destroy)->assertSessionHasErrors('period');
+        $this->assertDatabaseHas('report_periods', ['id' => $period]);
+        $this->patch($update, ['reopen' => true])->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('report_periods', ['id' => $period, 'closed_at' => null]);
+
+        $this->actingAs(User::factory()->create())->delete($destroy)->assertNotFound();
+        $this->actingAs($owner)->delete($destroy)
+            ->assertRedirectToRoute('workspace', ['section' => 'input', 'project' => $project]);
+        $this->assertDatabaseMissing('report_periods', ['id' => $period]);
+        $this->assertDatabaseMissing('measurements', ['period_id' => $period]);
+        $this->assertDatabaseCount('report_periods', 1);
+    }
 }
