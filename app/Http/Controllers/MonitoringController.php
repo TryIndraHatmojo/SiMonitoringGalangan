@@ -13,6 +13,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Unique;
 use Illuminate\Validation\ValidationException;
@@ -20,6 +21,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use stdClass;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MonitoringController extends Controller
 {
@@ -42,8 +44,17 @@ class MonitoringController extends Controller
         $tab = $request->query('tab') === 'periode' ? 'periode' : 'realisasi';
         $projects = $this->owned($request)->orderBy('name')->get(['id', 'name']);
         $project = $request->filled('project') ? $this->owned($request)->where('id', $request->integer('project'))->firstOrFail() : $this->owned($request)->first();
+        $sideView = null;
         if ($project) {
             $project->is_demo = (bool) $project->is_demo;
+            if ($project->side_view_path !== null) {
+                $sideView = [
+                    'url' => route('projects.sideView.show', ['project' => $project->id, 'v' => basename($project->side_view_path)]),
+                    'width' => $project->side_view_width,
+                    'height' => $project->side_view_height,
+                ];
+            }
+            unset($project->side_view_path, $project->side_view_width, $project->side_view_height);
         }
         $draft = $project ? json_decode($project->draft, true) : [];
         $periods = $this->periods($project->id ?? 0)->orderBy('p.end')->get();
@@ -56,6 +67,8 @@ class MonitoringController extends Controller
         $records = DB::table('measurements')->whereIn('period_id', $periods->pluck('id'))->get()->groupBy('period_id');
         $report = ProgressReport::calculate(json_decode($baseline->structure ?? '[]', true), collect());
         $history = [];
+        $blockStatus = [];
+        $reachedPeriod = false;
         foreach ($periods as $row) {
             $entry = ProgressReport::calculate(json_decode($row->structure, true), $records->get($row->id, collect()));
             if ($entry['actual'] === null && $row->reported_actual !== null) {
@@ -69,8 +82,12 @@ class MonitoringController extends Controller
             $row->deviation = $row->target !== null && $row->actual !== null ? $row->actual - $row->target : null;
             unset($row->structure);
             $history[] = $row;
+            if (! $reachedPeriod) {
+                $blockStatus = array_replace($blockStatus, $this->measuredBlocks($entry['groups'], $row->axis_label));
+            }
             if ($row->id === $period?->id) {
                 $report = $entry;
+                $reachedPeriod = true;
             }
         }
 
@@ -108,7 +125,138 @@ class MonitoringController extends Controller
             }
         }
 
-        return Inertia::render('dashboard', compact('projects', 'project', 'draft', 'period', 'history', 'section', 'tab', 'report', 'estimate', 'estimateWeights', 'bac', 'hasEstimate', 'canImportFormBuilder') + ['revision' => $baseline->revision ?? 0]);
+        $blocks = $this->constructionBlocks($draft);
+        $blockAreas = (object) DB::table('block_areas')->where('project_id', $project->id ?? 0)->pluck('points', 'item')
+            ->map(fn (string $points): array => json_decode($points, true, flags: JSON_THROW_ON_ERROR))->all();
+        $blockStatus = (object) $blockStatus;
+
+        return Inertia::render('dashboard', compact('projects', 'project', 'draft', 'period', 'history', 'section', 'tab', 'report', 'estimate', 'estimateWeights', 'bac', 'hasEstimate', 'canImportFormBuilder', 'sideView', 'blocks', 'blockAreas', 'blockStatus') + ['revision' => $baseline->revision ?? 0]);
+    }
+
+    public function showSideView(Request $request, int $project): StreamedResponse
+    {
+        $path = $this->owned($request)->where('id', $project)->firstOrFail()->side_view_path;
+        abort_if($path === null || ! Storage::disk('local')->exists($path), 404);
+
+        return Storage::disk('local')->response($path);
+    }
+
+    public function uploadSideView(Request $request, int $project): RedirectResponse
+    {
+        $ownedProject = $this->owned($request)->where('id', $project);
+        $previous = $ownedProject->firstOrFail()->side_view_path;
+        $file = $request->validate(['image' => 'required|file|image|mimes:png,jpg,jpeg,webp|max:10240'], [
+            'image.required' => 'Pilih gambar side view kapal.',
+            'image.image' => 'Unggah gambar PNG, JPG, atau WEBP.',
+            'image.mimes' => 'Unggah gambar PNG, JPG, atau WEBP.',
+            'image.max' => 'Ukuran gambar maksimal 10 MB.',
+        ])['image'];
+        $size = getimagesize($file->getRealPath());
+        if ($size === false) {
+            throw ValidationException::withMessages(['image' => 'Unggah gambar PNG, JPG, atau WEBP.']);
+        }
+
+        $path = $file->store("side-views/$project", 'local');
+        $ownedProject->update(['side_view_path' => $path, 'side_view_width' => $size[0], 'side_view_height' => $size[1]]);
+        if ($previous !== null) {
+            Storage::disk('local')->delete($previous);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Gambar side view disimpan.']);
+
+        return back();
+    }
+
+    public function destroySideView(Request $request, int $project): RedirectResponse
+    {
+        $path = DB::transaction(function () use ($request, $project): ?string {
+            $ownedProject = $this->owned($request)->where('id', $project);
+            $path = $ownedProject->lockForUpdate()->firstOrFail()->side_view_path;
+            $ownedProject->update(['side_view_path' => null, 'side_view_width' => null, 'side_view_height' => null]);
+            DB::table('block_areas')->where('project_id', $project)->delete();
+
+            return $path;
+        });
+        if ($path !== null) {
+            Storage::disk('local')->delete($path);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Gambar side view dan area blok dihapus.']);
+
+        return back();
+    }
+
+    public function updateBlockArea(Request $request, int $project): RedirectResponse
+    {
+        DB::transaction(function () use ($request, $project): void {
+            $owned = $this->owned($request)->where('id', $project)->lockForUpdate()->firstOrFail();
+            $data = $request->validate([
+                'item' => 'required|uuid',
+                'previous' => 'nullable|uuid',
+                'points' => 'present|nullable|array|list|min:3|max:200',
+                'points.*' => 'required|array|list|size:2',
+                'points.*.*' => 'required|numeric|between:0,1',
+            ], [
+                'points.min' => 'Tandai minimal tiga titik untuk membentuk area.',
+            ]);
+            $key = ['project_id' => $project, 'item' => $data['item']];
+            if ($data['points'] === null) {
+                DB::table('block_areas')->where($key)->delete();
+
+                return;
+            }
+            if ($owned->side_view_path === null) {
+                throw ValidationException::withMessages(['points' => 'Unggah gambar side view terlebih dahulu.']);
+            }
+            $blocks = $this->constructionBlocks(json_decode($owned->draft, true, flags: JSON_THROW_ON_ERROR));
+            abort_unless(in_array($data['item'], array_column($blocks, 'id'), true), 404);
+            if (isset($data['previous']) && $data['previous'] !== $data['item']) {
+                DB::table('block_areas')->where(['project_id' => $project, 'item' => $data['previous']])->delete();
+            }
+            DB::table('block_areas')->updateOrInsert($key, ['points' => json_encode($data['points'], JSON_THROW_ON_ERROR)]);
+        });
+
+        return back();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $groups
+     * @return list<array{id: string, name: string, group: string}>
+     */
+    private function constructionBlocks(array $groups): array
+    {
+        $blocks = [];
+        foreach ($groups as $group) {
+            if (! WorkBreakdown::isConstruction($group)) {
+                continue;
+            }
+            foreach ($group['items'] as $item) {
+                $blocks[] = ['id' => $item['id'], 'name' => $item['name'] ?? '', 'group' => $group['name'] ?? ''];
+            }
+        }
+
+        return $blocks;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $groups
+     * @return array<string, array{progress: float, period_label: string}>
+     */
+    private function measuredBlocks(array $groups, string $periodLabel): array
+    {
+        $measured = [];
+        foreach ($groups as $group) {
+            if (! WorkBreakdown::isConstruction($group)) {
+                continue;
+            }
+            foreach ($group['items'] as $item) {
+                if ($item['progress'] !== null) {
+                    $measured[$item['id']] = ['progress' => round($item['progress'], 4), 'period_label' => $periodLabel];
+                }
+            }
+        }
+
+        return $measured;
     }
 
     public function downloadFormBuilderTemplate(): BinaryFileResponse

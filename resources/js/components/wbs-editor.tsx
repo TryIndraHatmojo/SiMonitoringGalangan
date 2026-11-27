@@ -10,7 +10,12 @@ import {
     formBuilderTemplate,
     structure,
 } from '@/routes/projects';
-import type { Group, Item, Weight } from '@/types/monitoring';
+import type {
+    BlockAreas,
+    Group,
+    Item,
+    Weight,
+} from '@/types/monitoring';
 import { percent } from '@/types/monitoring';
 
 function newId() {
@@ -73,6 +78,7 @@ export function WbsEditor({
     hasEstimate,
     estimateWeights,
     canImportFormBuilder,
+    blockAreas,
 }: {
     project: number;
     draft: Group[];
@@ -80,6 +86,7 @@ export function WbsEditor({
     hasEstimate: boolean;
     estimateWeights: Record<string, number> | null;
     canImportFormBuilder: boolean;
+    blockAreas: BlockAreas;
 }) {
     const [groups, setGroups] = useState(draft);
     const [index, select] = useState(0);
@@ -486,6 +493,44 @@ export function WbsEditor({
                                                     )}
                                                 </dl>
                                             )}
+                                            {key === 'items' &&
+                                                construction &&
+                                                (draft.some((saved) =>
+                                                    saved.items.some(
+                                                        (block) =>
+                                                            block.id === row.id,
+                                                    ),
+                                                ) ? (
+                                                    <Button
+                                                        asChild
+                                                        variant="outline"
+                                                    >
+                                                        <Link
+                                                            href={workspace(
+                                                                'peta',
+                                                                {
+                                                                    query: {
+                                                                        project,
+                                                                        block: row.id,
+                                                                    },
+                                                                },
+                                                            )}
+                                                        >
+                                                            {blockAreas[row.id]
+                                                                ? 'Ubah area (terpetakan)'
+                                                                : 'Petakan area'}
+                                                        </Link>
+                                                    </Button>
+                                                ) : (
+                                                    <Button
+                                                        variant="outline"
+                                                        disabled
+                                                        title="Simpan draft sebelum memetakan area blok."
+                                                    >
+                                                        Simpan draft untuk
+                                                        memetakan
+                                                    </Button>
+                                                ))}
                                             <Button
                                                 aria-label={'Hapus ' + row.name}
                                                 variant="outline"

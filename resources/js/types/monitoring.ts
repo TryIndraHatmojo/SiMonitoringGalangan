@@ -74,7 +74,61 @@ export type EstimateDraft = Omit<EstimateInput, 'lines'> & {
     import_usd: string | null;
 };
 
+export type SideView = { url: string; width: number; height: number };
+export type Point = [number, number];
+export type BlockAreas = Record<string, Point[]>;
+export type MapBlock = { id: string; name: string; group: string };
+export type BlockProgress = Record<
+    string,
+    { progress: number; period_label: string }
+>;
+
+export const blockStatuses = {
+    unmeasured: {
+        label: 'Belum diukur',
+        description: 'Belum ada realisasi yang disimpan.',
+        shape: 'fill-slate-400/45 stroke-slate-600',
+        swatch: 'border-slate-600 bg-slate-400/60',
+    },
+    notStarted: {
+        label: 'Belum mulai',
+        description: 'Realisasi terukur 0%.',
+        shape: 'fill-red-500/45 stroke-red-700',
+        swatch: 'border-red-700 bg-red-500/60',
+    },
+    inProgress: {
+        label: 'Dalam pengerjaan',
+        description: 'Realisasi di atas 0% dan di bawah 100%.',
+        shape: 'fill-amber-400/50 stroke-amber-600',
+        swatch: 'border-amber-600 bg-amber-400/70',
+    },
+    done: {
+        label: 'Selesai',
+        description: 'Realisasi 100%.',
+        shape: 'fill-green-500/45 stroke-green-700',
+        swatch: 'border-green-700 bg-green-500/60',
+    },
+};
+
+export function blockStatusOf(
+    progress: number | null | undefined,
+): keyof typeof blockStatuses {
+    if (progress == null) {
+        return 'unmeasured';
+    }
+
+    if (progress <= 0) {
+        return 'notStarted';
+    }
+
+    return progress >= 100 ? 'done' : 'inProgress';
+}
+
 export type Monitoring = {
+    sideView: SideView | null;
+    blocks: MapBlock[];
+    blockAreas: BlockAreas;
+    blockStatus: BlockProgress;
     projects: Pick<Ship, 'name' | 'id'>[];
     project: Ship | null;
     draft: Group[];
@@ -100,6 +154,7 @@ export const sections = {
     estimasi: 'Engineering Estimate',
     wbs: 'Struktur Pekerjaan dan Pengukuran Progres',
     builder: 'Form Builder',
+    peta: 'Peta Blok',
     input: 'Input Progres',
     baru: 'Buat proyek',
 };

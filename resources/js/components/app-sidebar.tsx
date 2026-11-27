@@ -6,6 +6,7 @@ import {
     ListChecks,
     PanelsTopLeft,
     Ship,
+    Map as MapIcon,
 } from 'lucide-react';
 import { NavUser } from '@/components/nav-user';
 import {
@@ -25,6 +26,7 @@ export function AppSidebar() {
     const links = [
         ['ringkasan', ChartNoAxesCombined],
         ['builder', PanelsTopLeft],
+        ['peta', MapIcon],
         ['estimasi', Calculator],
         ['wbs', Layers],
         ['input', ListChecks],

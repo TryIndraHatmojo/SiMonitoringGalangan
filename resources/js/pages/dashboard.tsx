@@ -1,6 +1,8 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { useId, useState } from 'react';
+import { BlockMapEditor } from '@/components/block-map-editor';
 import { EstimateEditor } from '@/components/estimate-editor';
+import { ShipSideView } from '@/components/ship-side-view';
 import { Button } from '@/components/ui/button';
 import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
@@ -344,6 +346,15 @@ export default function Dashboard(props: Monitoring) {
                         hasEstimate={props.hasEstimate}
                         estimateWeights={props.estimateWeights}
                         canImportFormBuilder={props.canImportFormBuilder}
+                        blockAreas={props.blockAreas}
+                    />
+                ) : section === 'peta' ? (
+                    <BlockMapEditor
+                        key={project.id}
+                        project={project.id}
+                        sideView={props.sideView}
+                        blocks={props.blocks}
+                        areas={props.blockAreas}
                     />
                 ) : (
                     <>
@@ -515,6 +526,14 @@ export default function Dashboard(props: Monitoring) {
                                                 </section>
                                             ))}
                                         </div>
+                                        <ShipSideView
+                                            key={project.id}
+                                            project={project.id}
+                                            sideView={props.sideView}
+                                            blocks={props.blocks}
+                                            areas={props.blockAreas}
+                                            status={props.blockStatus}
+                                        />
                                         <History history={history} />
                                         <section>
                                             <h2>Kelompok pekerjaan</h2>
