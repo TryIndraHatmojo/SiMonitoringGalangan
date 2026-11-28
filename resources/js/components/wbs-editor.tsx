@@ -10,12 +10,7 @@ import {
     formBuilderTemplate,
     structure,
 } from '@/routes/projects';
-import type {
-    BlockAreas,
-    Group,
-    Item,
-    Weight,
-} from '@/types/monitoring';
+import type { BlockAreas, Group, Item, Weight } from '@/types/monitoring';
 import { percent } from '@/types/monitoring';
 
 function newId() {

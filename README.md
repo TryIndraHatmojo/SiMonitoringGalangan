@@ -35,23 +35,23 @@ erDiagram
     report_periods ||--o{ measurements : berisi
 ```
 
-| Tabel | Data yang disimpan |
-| --- | --- |
-| `projects` | Identitas proyek, pemilik (`user_id`), dan WBS yang masih bisa diedit (`draft`). |
-| `baselines` | Salinan WBS saat ditetapkan (`structure`), nomor revisi, dan proyek asal (`project_id`). |
-| `report_periods` | Rentang tanggal, target, waktu penutupan (`closed_at`), dan revisi WBS yang dirujuk (`baseline_id`). |
-| `measurements` | Nilai realisasi untuk satu kombinasi periode (`period_id`), item, dan tahap. ID item dan tahap merujuk ke struktur JSON baseline. |
+| Tabel            | Data yang disimpan                                                                                                                |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `projects`       | Identitas proyek, pemilik (`user_id`), dan WBS yang masih bisa diedit (`draft`).                                                  |
+| `baselines`      | Salinan WBS saat ditetapkan (`structure`), nomor revisi, dan proyek asal (`project_id`).                                          |
+| `report_periods` | Rentang tanggal, target, waktu penutupan (`closed_at`), dan revisi WBS yang dirujuk (`baseline_id`).                              |
+| `measurements`   | Nilai realisasi untuk satu kombinasi periode (`period_id`), item, dan tahap. ID item dan tahap merujuk ke struktur JSON baseline. |
 
 ### Baca dan tulis data
 
-| Aksi dan rute | Proses Laravel | Operasi database |
-| --- | --- | --- |
-| Buka Ringkasan atau ganti periode (`GET /dashboard`, `GET /monitoring/{section}`) | `index` | Baca proyek milik pengguna, periode beserta baseline masing-masing, dan hasil pengukuran. Hitung progres serta riwayat, lalu kirim hasil ke UI. |
-| Buat proyek (`POST /projects`) | `store` | Bila pengguna memilih salin WBS, baca `projects.draft` dari proyek sumber miliknya. Tambahkan satu baris ke `projects` dengan draft awal. |
-| Simpan draft atau tetapkan baseline (`PUT /projects/{project}/structure`) | `structure` | Perbarui `projects.draft`. Jika menetapkan baseline, tambahkan baris ke `baselines` berisi salinan WBS dan nomor revisi berikutnya dalam transaksi yang sama. |
-| Buat periode (`POST /projects/{project}/periods`) | `period` | Baca baseline terbaru dan periksa apakah tanggal bertumpang tindih dengan periode lain di proyek tersebut. Jika valid, tambahkan baris ke `report_periods` dengan `baseline_id` yang dipilih. |
-| Simpan realisasi (`PATCH /projects/{project}/periods/{period}`) | `update` | Baca periode dan baseline-nya untuk memastikan periode masih terbuka dan item serta tahap sesuai dengan WBS. Tambahkan atau perbarui baris di `measurements` untuk nilai yang dikirim. Jika nilai tahap dikosongkan, hapus catatan tahap tersebut jika ada. |
-| Simpan target atau tutup periode (rute `PATCH` yang sama) | `update` | Perbarui `report_periods.target` untuk menyimpan target, atau isi `report_periods.closed_at` untuk menutup periode. Backend menolak perubahan pada periode yang sudah ditutup. |
+| Aksi dan rute                                                                     | Proses Laravel | Operasi database                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Buka Ringkasan atau ganti periode (`GET /dashboard`, `GET /monitoring/{section}`) | `index`        | Baca proyek milik pengguna, periode beserta baseline masing-masing, dan hasil pengukuran. Hitung progres serta riwayat, lalu kirim hasil ke UI.                                                                                                             |
+| Buat proyek (`POST /projects`)                                                    | `store`        | Bila pengguna memilih salin WBS, baca `projects.draft` dari proyek sumber miliknya. Tambahkan satu baris ke `projects` dengan draft awal.                                                                                                                   |
+| Simpan draft atau tetapkan baseline (`PUT /projects/{project}/structure`)         | `structure`    | Perbarui `projects.draft`. Jika menetapkan baseline, tambahkan baris ke `baselines` berisi salinan WBS dan nomor revisi berikutnya dalam transaksi yang sama.                                                                                               |
+| Buat periode (`POST /projects/{project}/periods`)                                 | `period`       | Baca baseline terbaru dan periksa apakah tanggal bertumpang tindih dengan periode lain di proyek tersebut. Jika valid, tambahkan baris ke `report_periods` dengan `baseline_id` yang dipilih.                                                               |
+| Simpan realisasi (`PATCH /projects/{project}/periods/{period}`)                   | `update`       | Baca periode dan baseline-nya untuk memastikan periode masih terbuka dan item serta tahap sesuai dengan WBS. Tambahkan atau perbarui baris di `measurements` untuk nilai yang dikirim. Jika nilai tahap dikosongkan, hapus catatan tahap tersebut jika ada. |
+| Simpan target atau tutup periode (rute `PATCH` yang sama)                         | `update`       | Perbarui `report_periods.target` untuk menyimpan target, atau isi `report_periods.closed_at` untuk menutup periode. Backend menolak perubahan pada periode yang sudah ditutup.                                                                              |
 
 ### Cara transaksi database bekerja
 
@@ -81,11 +81,11 @@ Rumus lengkap, perlakuan nilai kosong, dan contoh hitung manual tersedia di [dok
 
 ### Lokasi kode
 
-| Bagian | Berkas |
-| --- | --- |
-| Rute monitoring | [routes/web.php](routes/web.php) |
-| Halaman monitoring | [dashboard.tsx](resources/js/pages/dashboard.tsx) |
-| Editor WBS | [wbs-editor.tsx](resources/js/components/wbs-editor.tsx) |
-| Validasi dan penyimpanan | [MonitoringController.php](app/Http/Controllers/MonitoringController.php) |
-| Perhitungan progres | [ProgressReport.php](app/Support/ProgressReport.php) |
-| Struktur tabel | [Migrasi monitoring](database/migrations/2026_11_22_211806_create_monitoring_tables.php) |
+| Bagian                   | Berkas                                                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| Rute monitoring          | [routes/web.php](routes/web.php)                                                         |
+| Halaman monitoring       | [dashboard.tsx](resources/js/pages/dashboard.tsx)                                        |
+| Editor WBS               | [wbs-editor.tsx](resources/js/components/wbs-editor.tsx)                                 |
+| Validasi dan penyimpanan | [MonitoringController.php](app/Http/Controllers/MonitoringController.php)                |
+| Perhitungan progres      | [ProgressReport.php](app/Support/ProgressReport.php)                                     |
+| Struktur tabel           | [Migrasi monitoring](database/migrations/2026_11_22_211806_create_monitoring_tables.php) |
